@@ -40,7 +40,6 @@ import { RegenerateKeyDialog } from "@/components/management/RegenerateKeyDialog
 import { ProxyLogsDialog } from "@/components/management/ProxyLogsDialog";
 import { EventLogViewer } from "@/components/dashboard/EventLogViewer";
 import { EventLogDialog } from "@/components/management/EventLogDialog";
-import { WorkerEditDialog } from "@/components/management/WorkerEditDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -57,7 +56,6 @@ import { WorkerInfoDialog } from "@/components/management/WorkerInfoDialog";
 import { SettingsDialog } from "@/components/management/SettingsDialog";
 import Image from "next/image";
 import mascot from "@/../public/mascot.png";
-import { WorkerEditDialog } from "@/components/management/WorkerEditDialog";
 
 let socket: Socket;
 
