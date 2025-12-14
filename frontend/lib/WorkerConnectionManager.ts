@@ -1,8 +1,14 @@
-import { io, Socket } from 'socket.io-client';
+import { Socket } from 'socket.io';
 import { PrismaClient } from '@prisma/client';
+import { PrismaMariaDb } from '@prisma/adapter-mariadb';
+import { createPool } from 'mariadb';
 import { WsEvents, CommandPayload, ProxyWorker } from '@proxy-farm/shared';
-// @ts-ignore
+
+const pool = createPool(process.env.DATABASE_URL || '');
+const adapter = new PrismaMariaDb(pool);
+
 const prisma = new PrismaClient({
+    adapter,
     log: ['warn', 'error']
 });
 

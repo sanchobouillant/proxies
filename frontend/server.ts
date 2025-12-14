@@ -1,24 +1,21 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http';
+console.log("SERVER STARTING...");
 import { WorkerConnectionManager } from './lib/WorkerConnectionManager';
 import { parse } from 'url';
 import next from 'next';
 import { Server as SocketIOServer } from 'socket.io';
-import { WsEvents, ProxyWorker } from '@proxy-farm/shared';
-// @ts-ignore
-// @ts-ignore
-const { PrismaClient } = require('@prisma/client');
+import { WsEvents, CommandPayload, ProxyWorker } from '@proxy-farm/shared';
+import prisma from './src/lib/prisma';
 import { TcpProxyManager } from './lib/TcpProxyManager';
 import { randomUUID } from 'crypto';
-import * as bcrypt from 'bcryptjs';
+const bcrypt = require('bcrypt');
 
 // Ensure env vars are loaded for standalone script
 if (process.env.NODE_ENV !== 'production') {
     require('dotenv').config();
 }
 
-const prisma = new PrismaClient({
-    log: ['info', 'warn', 'error']
-});
+console.log("Prisma using singleton from lib/prisma");
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = 'localhost';
 const port = 3000;

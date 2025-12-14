@@ -326,7 +326,17 @@ export class QmiHardwareManager implements HardwareManager {
                 await execAsync(`udhcpc -q -n -i ${interfaceName}`);
             } catch (e) {
                 // Fallback to dhclient
-                await execAsync(`dhclient ${interfaceName}`);
+                try {
+                    await execAsync(`dhclient ${interfaceName}`);
+                } catch (e: any) {
+                    // Determine if it's a "not found" error or execution error
+                    const isNotFound = e.message.includes('not found') || e.code === 127;
+                    if (isNotFound) {
+                        console.warn(`[QmiHardware] DHCP clients (udhcpc, dhclient) not found. Assuming interface configured externally or not needed.`);
+                    } else {
+                        console.error(`[QmiHardware] DHCP request failed: ${e.message}`);
+                    }
+                }
             }
 
             console.log(`[QmiHardware] Data connection established for ${modem.id} on ${interfaceName}`);

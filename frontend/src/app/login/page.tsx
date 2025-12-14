@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,7 +46,13 @@ export default function LoginPage() {
             <Card className="w-full max-w-md bg-white/80 dark:bg-zinc-900/80 backdrop-blur">
                 <CardHeader className="text-center">
                     <div className="mx-auto w-24 h-24 mb-4 relative hover:scale-105 transition-transform duration-300">
-                        <img src="/mascot.png" alt="Proxy Farm Mascot" className="w-full h-full object-contain drop-shadow-xl" />
+                        <Image
+                            src="/mascot.png"
+                            alt="Proxy Farm Mascot"
+                            fill
+                            className="object-contain drop-shadow-xl"
+                            priority
+                        />
                     </div>
                     <CardTitle className="text-2xl font-bold">Proxy Manager Access</CardTitle>
                 </CardHeader>
