@@ -25,6 +25,8 @@ COPY frontend ./
 # Generate Prisma Client
 # IMPORTANT : Avec cette image, Prisma va télécharger le moteur "debian-openssl-..."
 # Assure-toi que ton schema.prisma a "native" ou pas de binaryTargets spécifique.
+# Set dummy env for build time validation
+ENV DATABASE_URL="mysql://dummy:3306/dummy"
 RUN npx prisma generate
 
 # Build Next.js
