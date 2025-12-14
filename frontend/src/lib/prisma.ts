@@ -1,19 +1,18 @@
+import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
 
-const prismaClientSingleton = () => {
-    // Pas besoin d'adapter ou de pool manuel.
-    // Prisma gère ça nativement avec le moteur Rust.
-    return new PrismaClient({
+// Standard Prisma client for MySQL.
+// Cached in dev to avoid creating too many connections with hot reloads.
+const globalForPrisma = globalThis as unknown as {
+    prisma: PrismaClient | undefined
+}
+
+export const prisma =
+    globalForPrisma.prisma ??
+    new PrismaClient({
         log: ['info', 'warn', 'error'],
     })
-}
 
-declare global {
-    var prismaGlobal: undefined | ReturnType<typeof prismaClientSingleton>
-}
-
-const prisma = globalThis.prismaGlobal ?? prismaClientSingleton()
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
 
 export default prisma
-
-if (process.env.NODE_ENV !== 'production') globalThis.prismaGlobal = prisma
