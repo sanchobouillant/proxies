@@ -3,7 +3,7 @@ set -e
 
 echo "Installing system dependencies..."
 apt-get update
-apt-get install -y git build-essential gcc make qmicli libqmi-utils
+apt-get install -y git build-essential gcc make qmicli libqmi-utils isc-dhcp-client
 
 echo "Checking for 3proxy..."
 if ! command -v 3proxy &> /dev/null; then

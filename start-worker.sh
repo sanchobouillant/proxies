@@ -84,8 +84,8 @@ echo "CHECKING SYSTEM DEPENDENCIES"
 echo "=========================================="
 MISSING_DEPS=0
 check_dependency "qmicli" "libqmi-utils" || MISSING_DEPS=1
-if ! command -v 3proxy &> /dev/null; then
-    echo "3proxy not found. Running install_deps.sh..."
+if ! command -v 3proxy &> /dev/null || ! command -v dhclient &> /dev/null; then
+    echo "Dependencies (3proxy/dhclient) not found. Running install_deps.sh..."
     chmod +x ./install_deps.sh
     ./install_deps.sh
 fi
