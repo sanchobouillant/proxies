@@ -37,10 +37,11 @@ npm -v
 
 echo "Installing dependencies..."
 npm install
+echo "Building worker..."
+npm run build
 
 echo "Checking for shared module..."
 ls -la node_modules/@proxy-farm/shared || echo "Shared module not found in node_modules!"
-
 
 
 # Parse named arguments
@@ -82,8 +83,8 @@ MISSING_DEPS=0
 check_dependency "qmicli" "libqmi-utils" || MISSING_DEPS=1
 if ! command -v 3proxy &> /dev/null; then
     echo "3proxy not found. Running install_deps.sh..."
-    chmod +x worker/install_deps.sh
-    ./worker/install_deps.sh
+    chmod +x ./install_deps.sh
+    ./install_deps.sh
 fi
 
 if [ $MISSING_DEPS -eq 1 ]; then
