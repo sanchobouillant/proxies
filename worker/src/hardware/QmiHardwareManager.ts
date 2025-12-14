@@ -20,14 +20,11 @@ export class QmiHardwareManager implements HardwareManager {
     constructor() {
         this.debug('[QmiHardware] Initialized QMI hardware manager with Watchdog protection');
         this.pinManager = new PinManager();
-        // Start background polling
+        // Start background polling (will be started after initial scan)
         this.startWatchdog();
     }
 
     private startWatchdog() {
-        // Run immediately then interval
-        this.scanDevices().catch(console.error);
-
         this.watchdogInterval = setInterval(() => {
             this.scanDevices().catch(e => console.error('[QmiHardware] Watchdog cycle failed:', e));
         }, 15000); // Check every 15s
