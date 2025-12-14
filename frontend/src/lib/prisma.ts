@@ -7,7 +7,7 @@ const prismaClientSingleton = () => {
     // Use connection pool for adapter
     const connectionString = process.env.DATABASE_URL || '';
     const pool = createPool(connectionString);
-    const adapter = new PrismaMariaDb(pool);
+    const adapter = new PrismaMariaDb(pool as any);
 
     return new PrismaClient({
         adapter,

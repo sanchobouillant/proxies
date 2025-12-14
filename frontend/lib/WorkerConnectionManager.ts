@@ -42,6 +42,7 @@ export class WorkerConnectionManager {
         socket.on('connect', () => {
             console.log(`[Manager] Connected to Worker ${worker.name} (${worker.id})`);
             this.updateWorkerStatus(worker.id, 'ONLINE');
+            this.syncProxies(worker.id).catch(err => console.error(`[Manager] Failed to sync proxies for ${worker.id}:`, err));
 
             // On connect, the worker might send us a Register event, 
             // OR we can just wait for status updates.
@@ -66,6 +67,35 @@ export class WorkerConnectionManager {
         });
 
         this.connections.set(worker.id, socket);
+    }
+
+    private async syncProxies(workerId: string) {
+        console.log(`[Manager] Syncing proxies for worker ${workerId}...`);
+        const proxies = await prisma.proxy.findMany({
+            where: {
+                workerId: workerId,
+                status: 'ACTIVE'
+            }
+        });
+
+        if (proxies.length === 0) {
+            console.log(`[Manager] No active proxies to sync for worker ${workerId}.`);
+            return;
+        }
+
+        console.log(`[Manager] Found ${proxies.length} active proxies to start.`);
+        for (const proxy of proxies) {
+            this.sendCommand(workerId, 'START_PROXY', proxy.modemId, {
+                proxyPort: proxy.port,
+                user: proxy.authUser,
+                pass: proxy.authPass,
+                protocol: proxy.protocol,
+                apn: proxy.apn,
+                simPin: proxy.simPin,
+                mobileUser: proxy.mobileUser,
+                mobilePass: proxy.mobilePass
+            });
+        }
     }
 
     private async updateWorkerStatus(id: string, status: string) {
