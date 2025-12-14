@@ -33,7 +33,8 @@ export function ProxyLogsDialog({ open, onOpenChange, proxy }: ProxyLogsDialogPr
             // Connect specifically for logs or use existing global socket?
             // Let's use a specialized connection for simplicity/isolation or reuse logic.
             // We need to pass `role: dashboard`
-            const newSocket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3000', {
+            const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || (typeof window !== 'undefined' ? window.location.origin : undefined);
+            const newSocket = io(socketUrl, {
                 query: { role: 'dashboard' },
                 transports: ['websocket']
             });
