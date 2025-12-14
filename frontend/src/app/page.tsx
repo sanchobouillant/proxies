@@ -551,15 +551,12 @@ export default function Dashboard() {
                                           </TooltipContent>
                                         </Tooltip>
                                       )}
-                                    </>
-                                      )}
+                                    </div>
                                   </div>
-                                  )}
-                                </div>
-                              )
+                                  )
                             });
                           })()}
-                        </div>
+                                </div>
                       </div>
                     </Card>
                   </motion.div>
