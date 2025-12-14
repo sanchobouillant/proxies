@@ -91,9 +91,7 @@ export class WorkerConnectionManager {
                 pass: proxy.authPass,
                 protocol: proxy.protocol,
                 apn: proxy.apn,
-                simPin: proxy.simPin,
-                mobileUser: proxy.mobileUser,
-                mobilePass: proxy.mobilePass
+                simPin: proxy.simPin
             });
         }
     }

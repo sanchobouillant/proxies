@@ -153,9 +153,7 @@ class WorkerAgent {
                         console.log(`[Worker] Ensuring data connection for ${modem.id}`);
                         // Construct config object from payload
                         const connectConfig = {
-                            apn: payload.data.mobileConfig?.apn || payload.data.apn || 'free', // Fallback to free if missing, but prefer payload
-                            user: payload.data.mobileConfig?.user || payload.data.mobileUser,
-                            pass: payload.data.mobileConfig?.pass || payload.data.mobilePass,
+                            apn: payload.data.apn || 'free', // Fallback to free if missing, but prefer payload
                             pin: payload.data.simPin
                         };
 

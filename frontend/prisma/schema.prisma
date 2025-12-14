@@ -43,8 +43,6 @@ model Proxy {
   
   apn             String?
   simPin          String?  @map("sim_pin")
-  mobileUser      String?  @map("mobile_user")
-  mobilePass      String?  @map("mobile_pass")
   
   status          String   @default("STOPPED") // ACTIVE, STOPPED
   protocol        ProxyProtocol @default(SOCKS5)
