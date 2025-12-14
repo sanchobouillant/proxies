@@ -71,7 +71,7 @@ model EventLog {
   type      String   // WORKER, PROXY
   entityId  String   @map("entity_id")
   event     String   // ONLINE, OFFLINE, ERROR
-  details   String?
+  details   String?  @db.LongText
   createdAt DateTime @default(now()) @map("created_at")
 
   @@map("event_log")
