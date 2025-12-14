@@ -60,9 +60,8 @@ export function RegenerateKeyDialog({ workerId, workerName }: RegenerateKeyDialo
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 text-xs gap-2">
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
                     <RefreshCw className="h-4 w-4" />
-                    Reset key
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
