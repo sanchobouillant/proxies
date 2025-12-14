@@ -26,7 +26,11 @@ import {
   AlertTriangle,
   Lock,
   Plus,
-  Link2
+  Link2,
+  User,
+  Users,
+  LogOut,
+  ZapOff
 } from "lucide-react"; import { motion, AnimatePresence } from "framer-motion";
 import { AddWorkerDialog } from "@/components/management/AddWorkerDialog";
 import Link from "next/link";
@@ -516,41 +520,53 @@ export default function Dashboard() {
                                       <CopyProxyButton
                                         proxy={proxy}
                                         balancerIp={balancerIp}
+                                        workerIp={worker.ip}
+                                        modem={modem}
                                       />
 
                                       <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full h-8 text-xs font-medium border-gray-200 dark:border-zinc-700"
+                                            onClick={() => modem && sendCommand(worker.id, modem.id, 'REBOOT')}
+                                            disabled={!modem}
+                                          >
+                                            <RefreshCw className="w-3 h-3" />
+                                          </Button>
+                                        </TooltipTrigger>
                                         <TooltipContent>
-                                          <p>Restart the Physical Modem</p>
+                                          <p>Restart Modem</p>
                                         </TooltipContent>
                                       </Tooltip>
 
-                                      {matchedProxy && (
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              className={`w-full h-8 text-xs font-medium border-gray-200 dark:border-zinc-700 hover:bg-white dark:hover:bg-zinc-800 transition-colors ${matchedProxy.status === 'STOPPED' ? 'text-green-600 dark:text-green-400 hover:text-green-700' : 'text-orange-600 dark:text-orange-400 hover:text-orange-700'}`}
-                                              onClick={() => sendCommand(worker.id, modem.id, matchedProxy.status === 'STOPPED' ? 'START_PROXY' : 'STOP_PROXY', { proxyPort: matchedProxy.port })}
-                                            >
-                                              {matchedProxy.status === 'STOPPED' ? (
-                                                <>
-                                                  <Play className="w-3 h-3 mr-1.5" />
-                                                  Start
-                                                </>
-                                              ) : (
-                                                <>
-                                                  <Square className="w-3 h-3 mr-1.5" />
-                                                  Stop
-                                                </>
-                                              )}
-                                            </Button>
-                                          </TooltipTrigger>
-                                          <TooltipContent>
-                                            <p>{matchedProxy.status === 'STOPPED' ? 'Start Proxy' : 'Stop Proxy'}</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      )}
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className={`w-full h-8 text-xs font-medium border-gray-200 dark:border-zinc-700 hover:bg-white dark:hover:bg-zinc-800 transition-colors ${proxy.status === 'STOPPED' ? 'text-green-600 dark:text-green-400 hover:text-green-700' : 'text-orange-600 dark:text-orange-400 hover:text-orange-700'}`}
+                                            onClick={() => modem && sendCommand(worker.id, modem.id, proxy.status === 'STOPPED' ? 'START_PROXY' : 'STOP_PROXY', { proxyPort: proxy.port })}
+                                            disabled={!modem}
+                                          >
+                                            {proxy.status === 'STOPPED' ? (
+                                              <>
+                                                <Play className="w-3 h-3 mr-1.5" />
+                                                Start
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Square className="w-3 h-3 mr-1.5" />
+                                                Stop
+                                              </>
+                                            )}
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <p>{proxy.status === 'STOPPED' ? 'Start Proxy' : 'Stop Proxy'}</p>
+                                        </TooltipContent>
+                                      </Tooltip>
                                     </div>
                                   </div>
                                   )
