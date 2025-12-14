@@ -1,12 +1,16 @@
 # On remplace alpine par slim (basé sur Debian)
 # C'est beaucoup plus compatible avec Prisma et OpenSSL
-FROM node:20-slim
+FROM node:22-slim
 
 WORKDIR /app
 
 # Sur Debian/Slim, on utilise apt-get au lieu de apk.
 # On installe openssl pour être sûr (libc6 est déjà inclus dans Debian)
 RUN apt-get update -y && apt-get install -y openssl
+
+# Install tsx globally for Prisma Config loading
+RUN npm install -g tsx
+
 
 # 1. Setup Shared
 COPY shared ./shared
