@@ -293,6 +293,7 @@ export class QmiHardwareManager implements HardwareManager {
             if (status.includes('Connection status: \'connected\'')) {
                 // Already connected. Ensure we have IP on the interface?
                 // But fast check implies good.
+                console.log(`[QmiHardware] Modem ${modem.id} is already connected (WDS status confirms).`);
                 return;
             }
 
