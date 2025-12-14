@@ -56,6 +56,7 @@ import { WorkerInfoDialog } from "@/components/management/WorkerInfoDialog";
 import { SettingsDialog } from "@/components/management/SettingsDialog";
 import Image from "next/image";
 import mascot from "@/../public/mascot.png";
+import {WorkerEditDialog} from "@/components/management/WorkerEditDialog";
 
 let socket: Socket;
 
@@ -179,7 +180,7 @@ export default function Dashboard() {
               proxies: existing.proxies // Preserve DB proxies
             });
           } else {
-            // New worker from socket not in DB list? 
+            // New worker from socket not in DB list?
             map.set(updated.id, updated);
           }
         });
