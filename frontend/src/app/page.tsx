@@ -569,11 +569,12 @@ export default function Dashboard() {
                                       </Tooltip>
                                     </div>
                                   </div>
-                                  )
-                            });
-                                  return proxyCards;
-                          })()}
                                 </div>
+                              )
+                            });
+                            return proxyCards;
+                          })()}
+                        </div>
                       </div>
                     </Card>
                   </motion.div>
