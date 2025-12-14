@@ -1,0 +1,93 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Worker {
+  id        String   @id @default(uuid())
+  name      String
+  ip        String
+  port      Int
+  apiKey    String   @unique @map("api_key")
+  status    String   @default("OFFLINE")
+  lastSeen  DateTime @default(now()) @map("last_seen")
+  modems    Json?
+  proxies   Proxy[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  @@map("worker")
+}
+
+model Proxy {
+  id              String   @id @default(uuid())
+  name            String
+  port            Int      @unique
+  authUser        String?  @map("auth_user")
+  authPass        String?  @map("auth_pass")
+  modemId         String   @map("modem_id")
+  
+  workerId        String   @map("worker_id")
+  worker          Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  
+  protocol        ProxyProtocol @default(SOCKS5)
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  @@map("proxy")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  email     String?  @unique
+  password  String
+  role      String   @default("ADMIN")
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("user")
+}
+
+model EventLog {
+  id        String   @id @default(uuid())
+  type      String   // WORKER, PROXY
+  entityId  String   @map("entity_id")
+  event     String   // ONLINE, OFFLINE, ERROR
+  details   String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("event_log")
+  @@index([entityId])
+  @@index([createdAt])
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("setting")
+}
+
+enum WorkerStatus {
+  ONLINE
+  OFFLINE
+}
+
+enum ProxyProtocol {
+  HTTP
+  SOCKS5
+}

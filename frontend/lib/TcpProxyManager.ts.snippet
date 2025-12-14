@@ -1,0 +1,85 @@
+/* ... existing imports */
+
+/* ... inside class, or separate ... I'll put it as a private method inside the class */
+
+    private peekHostname(data: Buffer): string | null {
+        // HTTP Check
+        const str = data.toString('utf8'); // check first chunk as string
+        if (str.match(/^(CONNECT|GET|POST|PUT|DELETE|HEAD|OPTIONS)/)) {
+            // 1. CONNECT host:port
+            const connectMatch = str.match(/^CONNECT ([^ :]+)(?::\d+)?/);
+            if (connectMatch) return connectMatch[1];
+            
+            // 2. Host header
+            const hostMatch = str.match(/Host: ([^\r\n]+)/i);
+            if (hostMatch) return hostMatch[1].trim();
+        }
+
+        // TLS SNI Check
+        if (data.length > 0 && data[0] === 0x16) { // Handshake
+            try {
+                let pos = 5; // Skip record header (5 bytes)
+                if (data.length < pos + 4) return null;
+                
+                // Handshake Header
+                // const msgType = data[pos];
+                // const msgLen = (data[pos+1] << 16) + (data[pos+2] << 8) + data[pos+3];
+                pos += 4; // Skip Handshake header
+
+                // Client Hello
+                pos += 2; // Protocol Version
+                pos += 32; // Random
+                
+                if (pos >= data.length) return null;
+                
+                // Session ID
+                const sessionIdLen = data[pos];
+                pos += 1 + sessionIdLen;
+                
+                // Cipher Suites
+                if (pos + 1 >= data.length) return null;
+                const cipherSuitesLen = (data[pos] << 8) + data[pos+1];
+                pos += 2 + cipherSuitesLen;
+                
+                // Compression Methods
+                if (pos >= data.length) return null;
+                const compMethodsLen = data[pos];
+                pos += 1 + compMethodsLen;
+                
+                // Extensions
+                if (pos + 1 >= data.length) return null;
+                const extensionsLen = (data[pos] << 8) + data[pos+1];
+                pos += 2;
+                
+                let extPos = pos;
+                const end = extPos + extensionsLen;
+                
+                while (extPos + 4 <= end && extPos + 4 <= data.length) {
+                    const extType = (data[extPos] << 8) + data[extPos+1];
+                    const extLen = (data[extPos+2] << 8) + data[extPos+3];
+                    extPos += 4;
+                    
+                    if (extType === 0) { // server_name extension
+                        if (extPos + 2 <= data.length) {
+                             const listLen = (data[extPos] << 8) + data[extPos+1];
+                             extPos += 2;
+                             // server_name list
+                             let nameType = data[extPos];
+                             if (nameType === 0) { // host_name
+                                 const nameLen = (data[extPos+1] << 8) + data[extPos+2];
+                                 extPos += 3;
+                                 if (extPos + nameLen <= data.length) {
+                                     return data.slice(extPos, extPos + nameLen).toString('utf8');
+                                 }
+                             }
+                        }
+                        return null;
+                    }
+                    extPos += extLen;
+                }
+            } catch (e) {
+                // Ignore parsing errors
+            }
+        }
+        return null;
+    }

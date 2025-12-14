@@ -11,26 +11,22 @@ export class MockHardwareManager implements HardwareManager {
     private initializeMockModems() {
         this.modems = [
             {
-                id: 'mock_modem_1',
+                id: 'modem-mock-1',
                 interfaceName: 'wwan0',
-                iccid: '8933010000000000001',
+                ipAddress: '10.0.0.1',
                 status: ModemStatus.Online,
-                signalQuality: 85,
-                ipAddress: '10.0.0.5',
-                proxyPort: 20000,
-                user: 'user1',
-                pass: 'pass1'
+                iccid: '8933010000000000001',
+                imei: '350000000000001',
+                operator: 'MockOperator'
             },
             {
-                id: 'mock_modem_2',
+                id: 'modem-mock-2',
                 interfaceName: 'wwan1',
-                iccid: '8933010000000000002',
+                ipAddress: '10.0.0.2',
                 status: ModemStatus.Online,
-                signalQuality: 60,
-                ipAddress: '10.0.0.6',
-                proxyPort: 20002,
-                user: 'user2',
-                pass: 'pass2'
+                iccid: '8933010000000000002',
+                imei: '350000000000002',
+                operator: 'MockOperator 2'
             }
         ];
     }

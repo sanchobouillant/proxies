@@ -1,5 +1,5 @@
 import { HardwareManager } from './HardwareManager';
-import { LinuxHardwareManager } from './LinuxHardwareManager';
+import { QmiHardwareManager } from './QmiHardwareManager';
 import { MockHardwareManager } from './MockHardwareManager';
 
 export function createHardwareManager(): HardwareManager {
@@ -9,7 +9,7 @@ export function createHardwareManager(): HardwareManager {
         console.log('[HardwareFactory] Using Mock Hardware Manager');
         return new MockHardwareManager();
     } else {
-        console.log('[HardwareFactory] Using REAL Linux Hardware Manager');
-        return new LinuxHardwareManager();
+        console.log('[HardwareFactory] Using REAL QMI Hardware Manager');
+        return new QmiHardwareManager();
     }
 }
