@@ -571,6 +571,7 @@ export default function Dashboard() {
                                   </div>
                                   )
                             });
+                                  return proxyCards;
                           })()}
                                 </div>
                       </div>
