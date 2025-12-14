@@ -408,6 +408,82 @@ app.prepare().then(async () => {
                 return;
             }
 
+            if (req.method === 'PUT' && pathname?.match(/^\/api\/control\/proxies\/[^\/]+$/)) {
+                const parts = pathname.split('/');
+                const id = parts[4];
+                const body = await getBody(req);
+                const { name, port, authUser, authPass, modemId, workerId, protocol } = body;
+                try {
+                    const existing = await prisma.proxy.findUnique({ where: { id }, include: { worker: true } });
+                    if (!existing) { res.writeHead(404).end(JSON.stringify({ error: 'Proxy not found' })); return; }
+
+                    const pPort = parseInt(port);
+                    if (Number.isNaN(pPort) || pPort < 1 || pPort > 65535) {
+                        res.writeHead(400).end(JSON.stringify({ error: 'Invalid port' })); return;
+                    }
+
+                    const updated = await prisma.proxy.update({
+                        where: { id },
+                        data: {
+                            name,
+                            port: pPort,
+                            authUser,
+                            authPass,
+                            modemId,
+                            workerId,
+                            protocol: protocol || existing.protocol
+                        }
+                    });
+
+                    // Restart TCP forwarder if port changed
+                    if (existing.port !== pPort) {
+                        tcpManager.stopProxy(existing.port);
+                        const worker = await prisma.worker.findUnique({ where: { id: workerId } });
+                        if (worker && worker.ip) {
+                            tcpManager.ensureProxy(pPort, worker.ip, pPort);
+                        }
+                    }
+
+                    // Restart proxy on worker
+                    workerManager.sendCommand(workerId, 'STOP_PROXY', existing.modemId);
+                    workerManager.sendCommand(workerId, 'START_PROXY', modemId, {
+                        proxyPort: pPort,
+                        user: authUser,
+                        pass: authPass,
+                        protocol: protocol || 'SOCKS5'
+                    });
+
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify(updated));
+                } catch (e: any) {
+                    console.error('Error updating proxy:', e);
+                    res.writeHead(500).end(JSON.stringify({ error: 'Failed to update proxy' }));
+                }
+                return;
+            }
+
+            if (req.method === 'DELETE' && pathname?.match(/^\/api\/control\/proxies\/[^\/]+$/)) {
+                const parts = pathname.split('/');
+                const id = parts[4];
+                try {
+                    const existing = await prisma.proxy.findUnique({ where: { id }, include: { worker: true } });
+                    if (!existing) { res.writeHead(404).end(JSON.stringify({ error: 'Proxy not found' })); return; }
+
+                    // Stop TCP forwarder
+                    tcpManager.stopProxy(existing.port);
+                    // Notify worker
+                    workerManager.sendCommand(existing.workerId, 'STOP_PROXY', existing.modemId);
+
+                    await prisma.proxy.delete({ where: { id } });
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: true }));
+                } catch (e) {
+                    console.error('Error deleting proxy:', e);
+                    res.writeHead(500).end(JSON.stringify({ error: 'Failed to delete proxy' }));
+                }
+                return;
+            }
+
             // REGENERATE WORKER KEY
             if (req.method === 'POST' && pathname?.match(/^\/api\/control\/workers\/[^\/]+\/regenerate-key$/)) {
                 const parts = pathname.split('/');

@@ -40,6 +40,7 @@ import { RegenerateKeyDialog } from "@/components/management/RegenerateKeyDialog
 import { ProxyLogsDialog } from "@/components/management/ProxyLogsDialog";
 import { EventLogViewer } from "@/components/dashboard/EventLogViewer";
 import { EventLogDialog } from "@/components/management/EventLogDialog";
+import { ProxyEditDialog } from "@/components/management/ProxyEditDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -508,6 +509,16 @@ export default function Dashboard() {
                                             socks5://{proxy.authUser && proxy.authPass ? `${proxy.authUser}:${proxy.authPass}@` : ''}{balancerIp || (typeof window !== 'undefined' ? window.location.hostname : 'localhost')}:{proxy.port}
                                           </div>
                                         </div>
+                                        <ProxyEditDialog
+                                          proxy={proxy}
+                                          worker={worker as any}
+                                          onUpdated={(p) => {
+                                            setWorkers(prev => prev.map(w => w.id === worker.id ? { ...w, proxies: (w.proxies || []).map((pr: any) => pr.id === p.id ? { ...pr, ...p } : pr) } : w));
+                                          }}
+                                          onDeleted={(id) => {
+                                            setWorkers(prev => prev.map(w => w.id === worker.id ? { ...w, proxies: (w.proxies || []).filter((pr: any) => pr.id !== id) } : w));
+                                          }}
+                                        />
                                       </div>
 
                                       {modem && (modem as any).ip && (
