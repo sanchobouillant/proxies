@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "ts-node --project tsconfig.server.json server.ts",
+    "dev": "ts-node -r tsconfig-paths/register --project tsconfig.server.json server.ts",
     "build": "next build",
     "start": "npx prisma db push && NODE_ENV=production npx tsx server.ts",
     "lint": "eslint"
@@ -49,6 +49,7 @@
     "prisma": "^7.1.0",
     "tailwindcss": "^4.1.18",
     "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
     "tsx": "latest",
     "typescript": "^5.9.3"
   }

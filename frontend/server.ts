@@ -8,7 +8,6 @@ import { WsEvents, CommandPayload, ProxyWorker } from '@proxy-farm/shared';
 import prisma from './src/lib/prisma';
 import { TcpProxyManager } from './lib/TcpProxyManager';
 import { randomUUID } from 'crypto';
-import { io as clientIo } from 'socket.io-client';
 const bcrypt = require('bcrypt');
 
 // Ensure env vars are loaded for standalone script
@@ -311,7 +310,7 @@ app.prepare().then(async () => {
 
             if (req.method === 'POST' && pathname === '/api/control/worker') {
                 const body = await getBody(req);
-                const { name, ip, port } = body; // Ignore incoming apiKey
+                const { name, ip, port, apiKey: providedKey } = body; // optional apiKey from user
 
                 if (!name || !ip || !port) {
                     res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -340,15 +339,16 @@ app.prepare().then(async () => {
                     return;
                 }
 
-                const apiKey = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, ''); // 64 chars hex-like
+                const apiKey = providedKey && typeof providedKey === 'string' && providedKey.trim().length >= 16
+                    ? providedKey.trim()
+                    : randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, ''); // 64 chars hex-like
                 try {
                     const worker = await prisma.worker.create({
                         data: { name, ip, port: portNum, apiKey }
                     });
 
-                    // Attempt to push the key to the worker automatically
-                    bootstrapWorkerKey({ id: worker.id, ip, port: portNum, apiKey })
-                        .catch(err => console.warn(`[Bootstrap] Failed to push key to worker ${worker.id}:`, err?.message || err));
+                    // User will copy the key manually to worker config.json
+                    workerManager.refreshConnections(); // attempts connection once worker is configured
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify(worker));
                 } catch (e: any) {
@@ -420,12 +420,8 @@ app.prepare().then(async () => {
                         data: { apiKey }
                     });
 
-                    // Fetch worker connection details to bootstrap the new key
-                    const worker = await prisma.worker.findUnique({ where: { id } });
-                    if (worker?.ip && worker?.port) {
-                        bootstrapWorkerKey({ id, ip: worker.ip, port: worker.port, apiKey })
-                            .catch(err => console.warn(`[Bootstrap] Failed to push regenerated key to worker ${id}:`, err?.message || err));
-                    }
+                    // Disconnect current connection so user can update worker manually
+                    workerManager.disconnect(id);
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ success: true, apiKey }));
                 } catch (e) {
@@ -555,37 +551,6 @@ app.prepare().then(async () => {
         });
     });
 }); // Closing app.prepare()
-
-async function bootstrapWorkerKey(opts: { id: string, ip: string, port: number, apiKey: string }) {
-    const url = `http://${opts.ip}:${opts.port}`;
-    const socket = clientIo(url, {
-        auth: { token: 'bootstrap' },
-        reconnection: false,
-        timeout: 5000
-    });
-
-    return await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(() => {
-            socket.disconnect();
-            reject(new Error('Bootstrap timed out'));
-        }, 6000);
-
-        socket.on('connect_error', (err: any) => {
-            clearTimeout(timer);
-            reject(err);
-        });
-
-        socket.on('connect', () => {
-            socket.emit('bootstrap:setKey', { sharedKey: opts.apiKey });
-        });
-
-        socket.once('bootstrap:ack', () => {
-            clearTimeout(timer);
-            socket.disconnect();
-            resolve();
-        });
-    });
-}
 
 function getBody(req: any): Promise<any> {
     return new Promise((resolve, reject) => {

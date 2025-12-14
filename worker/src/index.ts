@@ -17,6 +17,7 @@ class WorkerAgent {
     private system: SystemMonitor;
     private configManager: ConfigManager;
     private workerId: string = '';
+    private sharedKey: string = '';
     private sessionKey: Buffer | null = null;
     private handshakeComplete = false;
     private logBuffer: { level: string, msg: string, timestamp: number }[] = [];
@@ -52,8 +53,11 @@ class WorkerAgent {
     async start() {
         // Load configuration
         const config = await this.configManager.load();
-        if (!config.sharedKey || config.sharedKey.trim().length === 0) {
-            console.warn('[Worker] sharedKey missing. Waiting for bootstrap from manager...');
+        this.sharedKey = config.sharedKey;
+
+        if (!this.sharedKey || this.sharedKey.trim().length === 0) {
+            console.error('[Worker] sharedKey missing in config.json. Set it and restart.');
+            process.exit(1);
         }
 
         // Port configuration
@@ -76,15 +80,7 @@ class WorkerAgent {
         // Authentication Middleware
         this.io.use((socket, next) => {
             const token = socket.handshake.auth.token;
-
-            // Bootstrap mode: allow only if no sharedKey yet and token is 'bootstrap'
-            if (!config.sharedKey || config.sharedKey.trim() === '') {
-                if (token === 'bootstrap') return next();
-                console.warn(`[Worker] Connection denied: waiting for bootstrap key.`);
-                return next(new Error("Authentication error (bootstrap pending)"));
-            }
-
-            if (token === config.sharedKey) {
+            if (token === this.sharedKey) {
                 return next();
             }
             console.warn(`[Worker] Validating connection failed. Wrong token.`);
@@ -92,30 +88,10 @@ class WorkerAgent {
         });
 
         this.io.on('connection', (socket) => {
-            const token = socket.handshake.auth.token;
-
-            // Handle bootstrap channel
-            if ((!config.sharedKey || config.sharedKey.trim() === '') && token === 'bootstrap') {
-                console.log('[Worker] Bootstrap connection received. Awaiting shared key...');
-                socket.once('bootstrap:setKey', async (payload: { sharedKey: string }) => {
-                    if (!payload?.sharedKey) {
-                        console.warn('[Worker] Bootstrap failed: missing sharedKey');
-                        socket.disconnect();
-                        return;
-                    }
-                    await this.configManager.setSharedKey(payload.sharedKey);
-                    config.sharedKey = payload.sharedKey;
-                    console.log('[Worker] Shared key stored via bootstrap. Ready for secure connections.');
-                    socket.emit('bootstrap:ack', { ok: true });
-                    socket.disconnect();
-                });
-                return;
-            }
-
             console.log(`[Worker] Manager connected (ID: ${socket.id})`);
             this.managerSocket = socket;
             this.handshakeComplete = false;
-            this.performHandshake(config.sharedKey);
+            this.performHandshake(this.sharedKey);
 
             socket.on('disconnect', () => {
                 console.log('[Worker] Manager disconnected');
@@ -203,6 +179,16 @@ class WorkerAgent {
             const { event, payload } = this.decrypt(packet);
             if (event === WsEvents.Command) {
                 await this.handleCommand(payload as CommandPayload);
+            } else if (event === 'ROTATE_KEY') {
+                const newKey = (payload as any)?.newKey;
+                if (typeof newKey === 'string' && newKey.length > 0) {
+                    await this.configManager.setSharedKey(newKey);
+                    this.sharedKey = newKey;
+                    console.log('[Worker] Shared key rotated via manager.');
+                    // Acknowledge then drop connection so manager reconnects with new key
+                    this.sendSecure('ROTATE_KEY_ACK' as any, { ok: true });
+                    setTimeout(() => this.managerSocket?.disconnect(true), 50);
+                }
             }
         } catch (e) {
             console.error('[Worker] Failed to decrypt secure packet:', e);

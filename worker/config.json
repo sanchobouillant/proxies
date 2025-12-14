@@ -1,5 +1,3 @@
 {
-  "workerId": "Test de worker",
-  "apiKey": "1f01a786c5ee49bd954e399477950f5304cf5f5482ce4f57895247153aea1660",
-  "managerUrl": "http://localhost:3000"
+  "sharedKey": "11e0832b1c9149ad9dd7c0186847d829fafe1cba68de4af9a5d15d71026d5485"
 }

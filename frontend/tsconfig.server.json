@@ -5,6 +5,8 @@
         "target": "es2020",
         "isolatedModules": false,
         "noEmit": false,
-        "esModuleInterop": true
+        "esModuleInterop": true,
+        "moduleResolution": "node",
+        "baseUrl": "."
     }
 }

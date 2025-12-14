@@ -11,10 +11,15 @@ const globalForPrisma = globalThis as unknown as {
     prisma: PrismaClient | undefined
 }
 
+// PrismaMariaDb expects the scheme mariadb://. Convert mysql:// automatically for local convenience.
+const normalizedUrl = connectionString.startsWith('mysql://')
+    ? connectionString.replace(/^mysql:\/\//, 'mariadb://')
+    : connectionString
+
 const prisma =
     globalForPrisma.prisma ??
     new PrismaClient({
-        adapter: new PrismaMariaDb(connectionString),
+        adapter: new PrismaMariaDb(normalizedUrl),
         log: ['info', 'warn', 'error'],
     })
 

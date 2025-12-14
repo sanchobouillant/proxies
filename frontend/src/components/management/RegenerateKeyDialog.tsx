@@ -69,7 +69,7 @@ export function RegenerateKeyDialog({ workerId, workerName }: RegenerateKeyDialo
                 <DialogHeader>
                     <DialogTitle>Reset shared key</DialogTitle>
                     <DialogDescription>
-                        Generates a new shared key for <strong>{workerName}</strong>. The dashboard will push it automatically; the old key stops working immediately. Keep this key only as a manual fallback in <code>config.json</code>.
+                        Génère une nouvelle clé pour <strong>{workerName}</strong>. L&apos;ancienne clé s&apos;arrête immédiatement. Copie cette clé dans le <code>config.json</code> du worker (champ <code>sharedKey</code>).
                     </DialogDescription>
                 </DialogHeader>
 
