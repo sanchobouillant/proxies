@@ -2,6 +2,10 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Install system dependencies (OpenSSL 3 + legacy compat if needed)
+# libc6-compat helps with some binary compatibility
+RUN apk add --no-cache openssl libc6-compat
+
 # 1. Setup Shared
 COPY shared ./shared
 WORKDIR /app/shared
