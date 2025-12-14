@@ -11,9 +11,14 @@ export class QmiHardwareManager implements HardwareManager {
     private isScanning = false;
     private watchdogInterval: NodeJS.Timeout | null = null;
     private pinManager: PinManager;
+    private DEBUG = process.env.DEBUG_QMI === '1';
+
+    private debug(...args: any[]) {
+        if (this.DEBUG) console.log(...args);
+    }
 
     constructor() {
-        console.log('[QmiHardware] Initialized QMI hardware manager with Watchdog protection');
+        this.debug('[QmiHardware] Initialized QMI hardware manager with Watchdog protection');
         this.pinManager = new PinManager();
         // Start background polling
         this.startWatchdog();
@@ -64,7 +69,7 @@ export class QmiHardwareManager implements HardwareManager {
                 const stdout = await this.executeQmi('ls /dev/cdc-wdm*', 2000);
                 devices = stdout.trim().split('\n').filter(Boolean);
             } catch (e) {
-                console.warn('[QmiHardware] No devices found (ls failed)');
+                this.debug('[QmiHardware] No devices found (ls failed)');
             }
 
             // Mark all current modems as unreachable first (until proven otherwise)
@@ -92,8 +97,8 @@ export class QmiHardwareManager implements HardwareManager {
                         }
                         */
                     } else {
-                        console.log(`[QmiHardware] New modem detected: ${info.id}`);
-                        this.modems.set(info.id, info);
+                    this.debug(`[QmiHardware] New modem detected: ${info.id}`);
+                    this.modems.set(info.id, info);
 
                         /*
                         if (info.simStatus === 'READY') {
@@ -119,7 +124,7 @@ export class QmiHardwareManager implements HardwareManager {
             // Handle Removed/Offline Modems
             for (const [id, modem] of this.modems) {
                 if (!foundIds.has(id)) {
-                    console.warn(`[QmiHardware] Modem ${id} is no longer detected! Marking OFFLINE.`);
+                    this.debug(`[QmiHardware] Modem ${id} is no longer detected! Marking OFFLINE.`);
                     modem.status = ModemStatus.Offline;
                     modem.signalQuality = 0;
                 }
@@ -137,12 +142,12 @@ export class QmiHardwareManager implements HardwareManager {
         if (!modem) return false;
 
         const devicePath = (modem as any).devicePath;
-        console.log(`[QmiHardware] Attempting to unlock SIM for ${modem.id} with PIN...`);
+        this.debug(`[QmiHardware] Attempting to unlock SIM for ${modem.id} with PIN...`);
 
         try {
             // Command: qmicli -d /dev/cdc-wdm0 --uim-verify-pin=PIN1,1234
             await this.executeQmi(`qmicli -d ${devicePath} --uim-verify-pin=PIN1,${pin}`, 5000);
-            console.log(`[QmiHardware] SIM unlocked successfully for ${modem.id}`);
+            this.debug(`[QmiHardware] SIM unlocked successfully for ${modem.id}`);
 
             if (modem.iccid) {
                 this.pinManager.savePin(modem.iccid, pin);
@@ -192,7 +197,7 @@ export class QmiHardwareManager implements HardwareManager {
         if (simStatus === 'LOCKED' && iccid !== 'UNKNOWN') {
             const savedPin = this.pinManager.getPin(iccid);
             if (savedPin) {
-                console.log(`[QmiHardware] Found saved PIN for ${iccid}, attempting auto-unlock...`);
+                this.debug(`[QmiHardware] Found saved PIN for ${iccid}, attempting auto-unlock...`);
                 // We execute unlock asynchronously to not block the scan loop too long
                 // or we do it here and wait.
                 try {
@@ -247,7 +252,7 @@ export class QmiHardwareManager implements HardwareManager {
 
         const devicePath = (modem as any).devicePath || `/dev/cdc-wdm${interfaceName.replace('wwan', '')}`;
 
-        console.log(`[QmiHardware] Rebooting ${devicePath}...`);
+        this.debug(`[QmiHardware] Rebooting ${devicePath}...`);
         modem.status = ModemStatus.Rebooting; // Immediate UI feedback
 
         try {
@@ -267,7 +272,7 @@ export class QmiHardwareManager implements HardwareManager {
         if (!modem) return false;
         const devicePath = (modem as any).devicePath;
 
-        console.log(`[QmiHardware] Rotating IP via QMI for ${devicePath}...`);
+        this.debug(`[QmiHardware] Rotating IP via QMI for ${devicePath}...`);
         modem.status = ModemStatus.Connecting;
 
         try {
@@ -308,11 +313,11 @@ export class QmiHardwareManager implements HardwareManager {
             if (status.includes('Connection status: \'connected\'')) {
                 // Already connected. Ensure we have IP on the interface?
                 // But fast check implies good.
-                console.log(`[QmiHardware] Modem ${modem.id} is already connected (WDS status confirms).`);
-                return true;
-            }
+            this.debug(`[QmiHardware] Modem ${modem.id} is already connected (WDS status confirms).`);
+            return true;
+        }
 
-            console.log(`[QmiHardware] Modem ${modem.id} is ONLINE but Disconnected. Attempting data connection (APN: ${apn})...`);
+        this.debug(`[QmiHardware] Modem ${modem.id} is ONLINE but Disconnected. Attempting data connection (APN: ${apn})...`);
 
             // 1. Find Network Interface
             let interfaceName = await this.getWwanInterface(devicePath);
