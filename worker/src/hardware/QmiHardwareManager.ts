@@ -33,8 +33,9 @@ export class QmiHardwareManager implements HardwareManager {
         }, 15000); // Check every 15s
     }
 
-    private async executeQmi(command: string, timeoutMs: number = 5000): Promise<string> {
-        console.log(`[QmiHardware] EXEC: ${command}`);
+    private async executeQmi(command: string, timeoutMs: number = 5000, verbose: boolean = true): Promise<string> {
+        const shouldLog = verbose || this.DEBUG;
+        if (shouldLog) this.debug(`[QmiHardware] EXEC: ${command}`);
         try {
             // Add timeout implementation to avoid hanging forever
             const promise = execAsync(command);
@@ -46,8 +47,8 @@ export class QmiHardwareManager implements HardwareManager {
             const result = await Promise.race([promise, childCheck]) as { stdout: string, stderr: string };
             const { stdout, stderr } = result;
 
-            if (stderr) console.warn(`[QmiHardware] STDERR: ${stderr.trim()}`);
-            if (stdout) console.log(`[QmiHardware] STDOUT: ${stdout.trim().substring(0, 200)}${stdout.length > 200 ? '...' : ''}`);
+            if (stderr && shouldLog) this.debug(`[QmiHardware] STDERR: ${stderr.trim()}`);
+            if (stdout && shouldLog) this.debug(`[QmiHardware] STDOUT: ${stdout.trim().substring(0, 200)}${stdout.length > 200 ? '...' : ''}`);
             return stdout;
         } catch (e: any) {
             console.error(`[QmiHardware] ERROR executing ${command}:`, e.message);
@@ -66,7 +67,7 @@ export class QmiHardwareManager implements HardwareManager {
             // 1. List physical devices
             let devices: string[] = [];
             try {
-                const stdout = await this.executeQmi('ls /dev/cdc-wdm*', 2000);
+                const stdout = await this.executeQmi('ls /dev/cdc-wdm*', 2000, false); // mute watchdog noise
                 devices = stdout.trim().split('\n').filter(Boolean);
             } catch (e) {
                 this.debug('[QmiHardware] No devices found (ls failed)');
@@ -79,7 +80,7 @@ export class QmiHardwareManager implements HardwareManager {
             for (const devicePath of devices) {
                 try {
                     // Try to identify the modem
-                    const info = await this.getModemInfo(devicePath);
+                    const info = await this.getModemInfo(devicePath, false); // mute watchdog noise
                     foundIds.add(info.id);
 
                     // Merge with existing state to preserve user/pass/port
@@ -159,7 +160,7 @@ export class QmiHardwareManager implements HardwareManager {
         }
     }
 
-    private async getModemInfo(devicePath: string): Promise<Modem> {
+    private async getModemInfo(devicePath: string, verbose: boolean = true): Promise<Modem> {
         // Fetch ICCID
         let iccid = 'UNKNOWN';
         let signal = 0;
@@ -168,7 +169,7 @@ export class QmiHardwareManager implements HardwareManager {
         // 1. Check SIM Status FIRST
         try {
             // qmicli -d /dev/cdc-wdm0 --uim-get-card-status
-            const stdoutStatus = await this.executeQmi(`qmicli -d ${devicePath} --uim-get-card-status`, 3000);
+            const stdoutStatus = await this.executeQmi(`qmicli -d ${devicePath} --uim-get-card-status`, 3000, verbose);
             if (stdoutStatus.includes('PIN1 state: enabled-not-verified')) {
                 simStatus = 'LOCKED';
             } else if (stdoutStatus.includes('PIN1 state: enabled-verified') || stdoutStatus.includes('PIN1 state: disabled')) {
@@ -185,7 +186,7 @@ export class QmiHardwareManager implements HardwareManager {
         // 2. Get IDs (ICCID might fail if locked, but we try)
         if (simStatus !== 'ERROR') {
             try {
-                const stdoutIds = await this.executeQmi(`qmicli -d ${devicePath} --dms-get-ids`, 5000);
+                const stdoutIds = await this.executeQmi(`qmicli -d ${devicePath} --dms-get-ids`, 5000, verbose);
                 const matchIccid = stdoutIds.match(/ICCID:\s+'(.+?)'/);
                 if (matchIccid) iccid = matchIccid[1];
             } catch (e) {
@@ -212,7 +213,7 @@ export class QmiHardwareManager implements HardwareManager {
         // Fetch Signal only if READY
         if (simStatus === 'READY') {
             try {
-                const stdoutSig = await this.executeQmi(`qmicli -d ${devicePath} --nas-get-signal-strength`, 3000);
+                const stdoutSig = await this.executeQmi(`qmicli -d ${devicePath} --nas-get-signal-strength`, 3000, verbose);
                 const matchSig = stdoutSig.match(/Network 'lte': '-(\d+) dBm'/);
                 if (matchSig) {
                     const dbm = parseInt(matchSig[1]) * -1;
