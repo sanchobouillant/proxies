@@ -1,28 +1,30 @@
-FROM node:20-alpine
+# On remplace alpine par slim (basé sur Debian)
+# C'est beaucoup plus compatible avec Prisma et OpenSSL
+FROM node:20-slim
 
 WORKDIR /app
 
-# Install system dependencies (OpenSSL 3 + legacy compat if needed)
-# libc6-compat helps with some binary compatibility
-RUN apk add --no-cache openssl libc6-compat
+# Sur Debian/Slim, on utilise apt-get au lieu de apk.
+# On installe openssl pour être sûr (libc6 est déjà inclus dans Debian)
+RUN apt-get update -y && apt-get install -y openssl
 
 # 1. Setup Shared
 COPY shared ./shared
 WORKDIR /app/shared
-# Install all dependencies (dev included) because we need tsc
 RUN npm install
 RUN npm run build
 
 # 2. Setup Frontend
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
-# Install all dependencies (including devDeps for ts-node)
 RUN npm install
 
 # Copy source code
 COPY frontend ./
 
 # Generate Prisma Client
+# IMPORTANT : Avec cette image, Prisma va télécharger le moteur "debian-openssl-..."
+# Assure-toi que ton schema.prisma a "native" ou pas de binaryTargets spécifique.
 RUN npx prisma generate
 
 # Build Next.js
@@ -30,5 +32,4 @@ RUN npm run build
 
 EXPOSE 3000
 
-# Start application (using ts-node as per package.json 'start')
 CMD ["npm", "start"]
