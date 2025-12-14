@@ -25,12 +25,11 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
     restart: always
-    ports:
-      - "3000:3000"
+    network_mode: host
     environment:
       NODE_ENV: production
-      # Internal Docker networking URL
-      DATABASE_URL: mysql://proxy_user:${DB_PASSWORD:-securepassword}@db:3306/proxy_farm
+      # When running in host network, DB is exposed on host 127.0.0.1:3306
+      DATABASE_URL: mysql://proxy_user:${DB_PASSWORD:-securepassword}@127.0.0.1:3306/proxy_farm
       # Add other vars from .env here if needed
       BALANCER_IP: ${BALANCER_IP:-127.0.0.1}
     depends_on:
