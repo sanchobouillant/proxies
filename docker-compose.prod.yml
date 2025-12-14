@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: proxy_db_prod
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-securepassword}
+      MYSQL_DATABASE: proxy_farm
+      MYSQL_USER: proxy_user
+      MYSQL_PASSWORD: ${DB_PASSWORD:-securepassword}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-h", "localhost" ]
+      timeout: 20s
+      retries: 10
+
+  app:
+    container_name: proxy_frontend_prod
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      # Internal Docker networking URL
+      DATABASE_URL: mysql://proxy_user:${DB_PASSWORD:-securepassword}@db:3306/proxy_farm
+      # Add other vars from .env here if needed
+      BALANCER_IP: ${BALANCER_IP:-127.0.0.1}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db_data:
