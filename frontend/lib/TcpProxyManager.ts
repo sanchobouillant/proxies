@@ -49,7 +49,7 @@ export class TcpProxyManager {
 
                 if (isFirstPacket) {
                     isFirstPacket = false;
-                    const hostname = this.peekHostname(data);
+                    const hostname = this.peekHostname(data as Buffer);
                     if (hostname) {
                         this.emitLog(entryPort, `Accessing: ${hostname}`, { type: 'activity' });
                     }
