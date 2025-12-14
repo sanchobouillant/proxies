@@ -26,6 +26,9 @@ echo "Current directory: $(pwd)"
 echo "Listing root directory..."
 ls -la
 
+echo "Building shared module..."
+(cd shared && npm install && npm run build) || { echo "Failed to build shared"; exit 1; }
+
 echo "Changing to worker directory..."
 cd worker || { echo "Failed to cd into worker"; exit 1; }
 echo "Current directory: $(pwd)"
