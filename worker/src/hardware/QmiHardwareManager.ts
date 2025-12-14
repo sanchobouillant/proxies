@@ -86,16 +86,20 @@ export class QmiHardwareManager implements HardwareManager {
                             status: ModemStatus.Online // It responded, so it's online
                         });
                         // Attempt connection if SIM is ready
+                        /* 
                         if (info.simStatus === 'READY') {
                             this.ensureConnection(this.modems.get(info.id)!, devicePath).catch(err => console.error(`[Qmi] Connect error ${info.id}:`, err));
                         }
+                        */
                     } else {
                         console.log(`[QmiHardware] New modem detected: ${info.id}`);
                         this.modems.set(info.id, info);
 
+                        /*
                         if (info.simStatus === 'READY') {
                             this.ensureConnection(info, devicePath).catch(err => console.error(`[Qmi] Connect error ${info.id}:`, err));
                         }
+                        */
                     }
                 } catch (e: any) {
                     console.error(`[QmiHardware] Zombie modem detected at ${devicePath}:`, e.message);

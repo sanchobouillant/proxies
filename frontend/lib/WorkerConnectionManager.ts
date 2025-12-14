@@ -1,16 +1,7 @@
 import { Socket } from 'socket.io';
-import { PrismaClient } from '@prisma/client';
-import { PrismaMariaDb } from '@prisma/adapter-mariadb';
-import { createPool } from 'mariadb';
+import prisma from '@/lib/prisma';
 import { WsEvents, CommandPayload, ProxyWorker } from '@proxy-farm/shared';
-
-const pool = createPool(process.env.DATABASE_URL || '');
-const adapter = new PrismaMariaDb(pool);
-
-const prisma = new PrismaClient({
-    adapter,
-    log: ['warn', 'error']
-});
+import { io } from 'socket.io-client';
 
 export class WorkerConnectionManager {
     private connections: Map<string, Socket> = new Map(); // workerId -> Socket
@@ -105,7 +96,7 @@ export class WorkerConnectionManager {
                 modems: data.modems as any,
                 lastSeen: new Date()
             }
-        });
+        }).catch(err => console.error(`Failed to handle Register for ${id}`, err));
 
         // Broadcast
         this.ioServer.emit('state_update', [{ ...data, id, status: 'ONLINE' }]);
@@ -118,7 +109,7 @@ export class WorkerConnectionManager {
                 modems: data.modems as any,
                 lastSeen: new Date()
             }
-        });
+        }).catch(err => console.error(`Failed to handle status update for ${id}`, err));
         this.ioServer.emit('state_update', [{ ...data, id, status: 'ONLINE' }]);
     }
 
@@ -131,7 +122,7 @@ export class WorkerConnectionManager {
                 details: log.msg,
                 createdAt: log.timestamp ? new Date(log.timestamp) : new Date()
             }
-        });
+        }).catch(err => console.error(`Failed to log event for ${id}`, err));
         this.ioServer.to('dashboard').emit('new_log', saved);
     }
 
