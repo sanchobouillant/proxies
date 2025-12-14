@@ -1,10 +1,10 @@
 import { Socket } from 'socket.io';
 import prisma from '@/lib/prisma';
 import { WsEvents, CommandPayload, ProxyWorker } from '@proxy-farm/shared';
-import { io } from 'socket.io-client';
+import { io, Socket as ClientSocket } from 'socket.io-client';
 
 export class WorkerConnectionManager {
-    private connections: Map<string, Socket> = new Map(); // workerId -> Socket
+    private connections: Map<string, ClientSocket> = new Map(); // workerId -> ClientSocket
     private ioServer: any; // Reference to Dashboard IO to broadcast updates
 
     constructor(ioServer: any) {

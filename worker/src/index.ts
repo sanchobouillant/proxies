@@ -139,6 +139,32 @@ class WorkerAgent {
             case 'START_PROXY':
                 if (payload.data && payload.data.proxyPort) {
                     console.log(`[Worker] Starting proxy on ${modem.interfaceName} -> Port ${payload.data.proxyPort}`);
+
+                    // 1. PIN Unlock if supplied (and seems locked or we just try)
+                    if (payload.data.simPin) {
+                        if ('unlockSim' in this.hardware) {
+                            console.log(`[Worker] Trying SIM unlock with PIN for ${modem.id}`);
+                            await (this.hardware as any).unlockSim(modem.interfaceName, payload.data.simPin);
+                        }
+                    }
+
+                    // 2. Ensure Data Connection
+                    if ('connectModem' in this.hardware) {
+                        console.log(`[Worker] Ensuring data connection for ${modem.id}`);
+                        // Construct config object from payload
+                        const connectConfig = {
+                            apn: payload.data.mobileConfig?.apn || payload.data.apn || 'free', // Fallback to free if missing, but prefer payload
+                            user: payload.data.mobileConfig?.user || payload.data.mobileUser,
+                            pass: payload.data.mobileConfig?.pass || payload.data.mobilePass,
+                            pin: payload.data.simPin
+                        };
+
+                        const connected = await (this.hardware as any).connectModem(modem, connectConfig);
+                        if (!connected) {
+                            console.error(`[Worker] Failed to establish data connection for ${modem.id}. Proxy might fail.`);
+                        }
+                    }
+
                     modem.proxyPort = payload.data.proxyPort;
                     modem.user = payload.data.user;
                     modem.pass = payload.data.pass;

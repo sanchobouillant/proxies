@@ -289,7 +289,18 @@ export class QmiHardwareManager implements HardwareManager {
         return Array.from(this.modems.values());
     }
 
-    private async ensureConnection(modem: Modem, devicePath: string) {
+    async connectModem(modem: Modem, config?: { apn?: string, user?: string, pass?: string, pin?: string }): Promise<boolean> {
+        const devicePath = (modem as any).devicePath;
+        const apn = config?.apn || 'free'; // Default fallback or error?
+
+        // Check SIM status before connecting
+        const info = await this.getModemInfo(devicePath);
+
+        if (info.simStatus === 'LOCKED') {
+            console.log(`[QmiHardware] connecting modem ${modem.id}, but SIM is locked.`); // We expect UNLOCK command first or Auto-unlock
+            return false;
+        }
+
         // Only try connecting if status is "Online" (SIM ready) but maybe not "Connected" data-wise
         // We need to check WDS status
         try {
@@ -298,19 +309,16 @@ export class QmiHardwareManager implements HardwareManager {
                 // Already connected. Ensure we have IP on the interface?
                 // But fast check implies good.
                 console.log(`[QmiHardware] Modem ${modem.id} is already connected (WDS status confirms).`);
-                return;
+                return true;
             }
 
-            console.log(`[QmiHardware] Modem ${modem.id} is ONLINE but Disconnected. Attempting data connection (APN: free)...`);
+            console.log(`[QmiHardware] Modem ${modem.id} is ONLINE but Disconnected. Attempting data connection (APN: ${apn})...`);
 
             // 1. Find Network Interface
             let interfaceName = await this.getWwanInterface(devicePath);
             if (!interfaceName) {
-                // Fallback: If we can't find it via QMI, simplistic heuristic or error
-                // The user's ip link output shows `wwu...` names.
-                // Qmicli usually knows.
                 console.error(`[QmiHardware] Could not determine network interface for ${devicePath}. Aborting connection.`);
-                return;
+                return false;
             }
             console.log(`[QmiHardware] Found network interface: ${interfaceName}`);
 
@@ -318,22 +326,20 @@ export class QmiHardwareManager implements HardwareManager {
             await execAsync(`ip link set ${interfaceName} up`);
 
             // 3. Start Network (QMI)
-            // Using 'free' as default APN as requested. FUTURE: Configurable.
-            // --client-no-release-cid is vital to keep connection after qmicli exits
-            await this.executeQmi(`qmicli -d ${devicePath} --wds-start-network="apn='free',ip-type=4" --client-no-release-cid`, 10000);
+            let cmd = `qmicli -d ${devicePath} --wds-start-network="apn='${apn}',ip-type=4" --client-no-release-cid`;
+            if (config?.user) cmd += ` --auth-user '${config.user}'`;
+            if (config?.pass) cmd += ` --auth-password '${config.pass}'`;
+
+            await this.executeQmi(cmd, 15000);
 
             // 4. DHCP
             console.log(`[QmiHardware] Network started. Requesting IP via DHCP for ${interfaceName}...`);
-            // Try udhcpc (busybox) first, then dhclient
             try {
-                // -q: quit after lease, -n: exit if failure, -i: interface
                 await execAsync(`udhcpc -q -n -i ${interfaceName}`);
             } catch (e) {
-                // Fallback to dhclient
                 try {
                     await execAsync(`dhclient ${interfaceName}`);
                 } catch (e: any) {
-                    // Determine if it's a "not found" error or execution error
                     const isNotFound = e.message.includes('not found') || e.code === 127;
                     if (isNotFound) {
                         console.warn(`[QmiHardware] DHCP clients (udhcpc, dhclient) not found. Assuming interface configured externally or not needed.`);
@@ -345,17 +351,17 @@ export class QmiHardwareManager implements HardwareManager {
 
             console.log(`[QmiHardware] Data connection established for ${modem.id} on ${interfaceName}`);
 
-            // Update modem state mapping?
-            // The next scan() loop will pick up the new IP/Interface if we used that logic,
-            // but we should probably update the interfaceName in our map if it differs.
             if (interfaceName && interfaceName !== modem.interfaceName) {
                 console.log(`[QmiHardware] Updating interface name for ${modem.id}: ${modem.interfaceName} -> ${interfaceName}`);
                 modem.interfaceName = interfaceName;
-                (modem as any).interfaceName = interfaceName; // Force update
+                (modem as any).interfaceName = interfaceName;
             }
+
+            return true;
 
         } catch (e: any) {
             console.error(`[QmiHardware] Failed to connect ${modem.id}: ${e.message}`);
+            return false;
         }
     }
 
