@@ -65,19 +65,6 @@ app.prepare().then(async () => {
             const parsedUrl = parse(req.url!, true);
             const { pathname, query } = parsedUrl;
 
-            // AUTH GUARD (Replaces middleware.ts)
-            const token = getCookie(req, 'auth_token');
-            const publicPaths = ['/login', '/api/auth/login', '/favicon.ico'];
-            const isPublic = publicPaths.includes(pathname || '') ||
-                pathname?.startsWith('/_next') ||
-                pathname?.startsWith('/static') ||
-                pathname?.startsWith('/api/auth'); // Allow all auth endpoints
-
-            if (!token && !isPublic) {
-                res.writeHead(307, { Location: '/login' });
-                res.end();
-                return;
-            }
             if (req.method === 'POST' && pathname === '/api/auth/login') {
                 const body = await getBody(req);
                 const { username, password } = body;
