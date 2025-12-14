@@ -40,6 +40,7 @@ import { RegenerateKeyDialog } from "@/components/management/RegenerateKeyDialog
 import { ProxyLogsDialog } from "@/components/management/ProxyLogsDialog";
 import { EventLogViewer } from "@/components/dashboard/EventLogViewer";
 import { EventLogDialog } from "@/components/management/EventLogDialog";
+import { WorkerEditDialog } from "@/components/management/WorkerEditDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,6 +57,7 @@ import { WorkerInfoDialog } from "@/components/management/WorkerInfoDialog";
 import { SettingsDialog } from "@/components/management/SettingsDialog";
 import Image from "next/image";
 import mascot from "@/../public/mascot.png";
+import { WorkerEditDialog } from "@/components/management/WorkerEditDialog";
 
 let socket: Socket;
 
@@ -421,6 +423,15 @@ export default function Dashboard() {
                             </Tooltip>
 
                             <RegenerateKeyDialog workerId={worker.id} workerName={worker.name || 'Unknown Worker'} />
+                            <WorkerEditDialog
+                              workerId={worker.id}
+                              currentName={worker.name || ''}
+                              currentIp={worker.ip || ''}
+                              currentPort={worker.port || 3001}
+                              onUpdated={(w) => {
+                                setWorkers(prev => prev.map(p => p.id === w.id ? { ...p, name: w.name, ip: w.ip, port: w.port } : p));
+                              }}
+                            />
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <Button

@@ -438,6 +438,55 @@ app.prepare().then(async () => {
                 return;
             }
 
+            if (req.method === 'PUT' && pathname?.match(/^\/api\/control\/workers\/[^\/]+$/)) {
+                const parts = pathname.split('/');
+                const id = parts[4];
+                const body = await getBody(req);
+                const { name, ip, port } = body;
+
+                if (!name || !ip || !port) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Missing required fields: name, ip, or port' }));
+                    return;
+                }
+
+                // Reuse host validation
+                if (/^https?:\/\//i.test(ip) || /[\s/]/.test(ip)) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'IP/Host should not include protocol or path' }));
+                    return;
+                }
+                const ipv4 = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
+                const hostname = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\.(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?))*$/;
+                if (!(ip === 'localhost' || ipv4.test(ip) || hostname.test(ip))) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Invalid host format (use IPv4 or hostname, no protocol)' }));
+                    return;
+                }
+                const portNum = parseInt(port);
+                if (Number.isNaN(portNum) || portNum < 1 || portNum > 65535) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Invalid port' }));
+                    return;
+                }
+
+                try {
+                    const updated = await prisma.worker.update({
+                        where: { id },
+                        data: { name, ip, port: portNum }
+                    });
+                    // If connection exists, drop it so it reconnects with new coords
+                    workerManager.disconnect(id);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify(updated));
+                } catch (e: any) {
+                    console.error('Error updating worker:', e);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Failed to update worker' }));
+                }
+                return;
+            }
+
             if (req.method === 'DELETE' && pathname?.match(/^\/api\/control\/workers\/[^\/]+$/)) {
                 const parts = pathname.split('/');
                 const id = parts[4];
