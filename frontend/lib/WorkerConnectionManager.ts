@@ -2,7 +2,9 @@ import { io, Socket } from 'socket.io-client';
 import { PrismaClient } from '@prisma/client';
 import { WsEvents, CommandPayload, ProxyWorker } from '@proxy-farm/shared';
 // @ts-ignore
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+    log: ['warn', 'error']
+});
 
 export class WorkerConnectionManager {
     private connections: Map<string, Socket> = new Map(); // workerId -> Socket

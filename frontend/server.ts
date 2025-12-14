@@ -53,7 +53,21 @@ async function logEvent(type: 'WORKER' | 'PROXY', entityId: string, event: 'ONLI
 app.prepare().then(async () => {
 
 
-    // 0.5 Restore Proxies
+    // 0.5 Restore Proxies & Ensure Default User
+    const userCount = await prisma.user.count();
+    if (userCount === 0) {
+        console.log("Creating default admin user...");
+        const hashedPassword = bcrypt.hashSync('admin', 10);
+        await prisma.user.create({
+            data: {
+                username: 'admin',
+                password: hashedPassword,
+                role: 'ADMIN'
+            }
+        });
+        console.log("Default user 'admin' created.");
+    }
+
     const allProxies = await prisma.proxy.findMany({ include: { worker: true } });
     for (const proxy of allProxies) {
         if (proxy.worker && proxy.worker.ip) {
