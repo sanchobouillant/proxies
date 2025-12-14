@@ -30,7 +30,8 @@ import {
   User,
   Users,
   LogOut,
-  ZapOff
+  ZapOff,
+  Trash2
 } from "lucide-react"; import { motion, AnimatePresence } from "framer-motion";
 import { AddWorkerDialog } from "@/components/management/AddWorkerDialog";
 import Link from "next/link";
@@ -53,6 +54,8 @@ import { useRouter } from "next/navigation";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { WorkerInfoDialog } from "@/components/management/WorkerInfoDialog";
 import { SettingsDialog } from "@/components/management/SettingsDialog";
+import Image from "next/image";
+import mascot from "@/../public/mascot.png";
 
 let socket: Socket;
 
@@ -233,6 +236,21 @@ export default function Dashboard() {
     } catch (e) { console.error(e); }
   };
 
+  const deleteWorker = async (workerId: string) => {
+    if (!confirm("Delete this worker? All its proxies will be removed.")) return;
+    try {
+      const res = await fetch(`/api/control/workers/${workerId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setWorkers(prev => prev.filter(w => w.id !== workerId));
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to delete worker');
+      }
+    } catch (e) {
+      alert('Network error deleting worker');
+    }
+  };
+
   return (
     <TooltipProvider>
       <motion.div
@@ -245,7 +263,7 @@ export default function Dashboard() {
           <div className="flex h-16 items-center px-6 justify-between">
             <div className="flex items-center gap-4">
               <div className="relative w-14 h-14 hover:scale-110 transition-transform cursor-pointer">
-                <img src="/mascot.png" alt="Mascot" className="w-full h-full object-contain drop-shadow-sm" />
+                <Image src={mascot} alt="Mascot" fill sizes="56px" className="object-contain drop-shadow-sm" priority />
               </div>
               <div>
                 <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-zinc-900 to-zinc-600 dark:from-white dark:to-zinc-400">
@@ -402,6 +420,21 @@ export default function Dashboard() {
                             </Tooltip>
 
                             <RegenerateKeyDialog workerId={worker.id} workerName={worker.name || 'Unknown Worker'} />
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-red-500 hover:text-red-700 dark:hover:text-red-300"
+                                  onClick={() => deleteWorker(worker.id)}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Delete worker</p>
+                              </TooltipContent>
+                            </Tooltip>
                             <Badge variant="outline" className={worker.status === 'ONLINE' ? "bg-emerald-50/50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800" : "bg-gray-100 text-gray-500"}>
                               {worker.status || 'OFFLINE'}
                             </Badge>

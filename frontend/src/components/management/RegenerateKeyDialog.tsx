@@ -60,16 +60,16 @@ export function RegenerateKeyDialog({ workerId, workerName }: RegenerateKeyDialo
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
-                    <Key className="h-4 w-4" />
+                <Button variant="outline" size="sm" className="h-8 text-xs gap-2">
+                    <RefreshCw className="h-4 w-4" />
+                    Reset key
                 </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Regenerate API Key</DialogTitle>
+                    <DialogTitle>Reset shared key</DialogTitle>
                     <DialogDescription>
-                        Generate a new security key for <strong>{workerName}</strong>.
-                        The worker will remain disconnected until you update its configuration with this new key.
+                        Generates a new shared key for <strong>{workerName}</strong>. The dashboard will push it automatically; the old key stops working immediately. Keep this key only as a manual fallback in <code>config.json</code>.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -94,7 +94,7 @@ export function RegenerateKeyDialog({ workerId, workerName }: RegenerateKeyDialo
                                 </Button>
                             </div>
                             <p className="text-xs text-muted-foreground mt-2">
-                                Copy this key and replace the <code>apiKey</code> in your worker's <code>worker-config.json</code> file.
+                                Copy this key and replace <code>sharedKey</code> in your worker&apos;s <code>config.json</code> file (only that field is needed).
                             </p>
                         </div>
                         <DialogFooter>

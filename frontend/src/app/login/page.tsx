@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import mascot from "@/../public/mascot.png";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,9 +48,10 @@ export default function LoginPage() {
                 <CardHeader className="text-center">
                     <div className="mx-auto w-24 h-24 mb-4 relative hover:scale-105 transition-transform duration-300">
                         <Image
-                            src="/mascot.png"
+                            src={mascot}
                             alt="Proxy Farm Mascot"
                             fill
+                            sizes="96px"
                             className="object-contain drop-shadow-xl"
                             priority
                         />

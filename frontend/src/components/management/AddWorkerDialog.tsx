@@ -20,17 +20,20 @@ export function AddWorkerDialog({ onWorkerAdded }: { onWorkerAdded: () => void }
     const [generatedKey, setGeneratedKey] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
 
-    const validateIp = (ip: string) => {
-        if (ip === "localhost") return true;
-        const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
-        if (!ipRegex.test(ip)) return false;
-
-        // Check 0-255 range
-        const parts = ip.split('.');
-        return parts.every(part => {
-            const num = parseInt(part, 10);
-            return num >= 0 && num <= 255;
-        });
+    const validateHost = (host: string) => {
+        if (!host) return false;
+        if (/^https?:\/\//i.test(host)) return false; // no protocol
+        if (/[\s/]/.test(host)) return false; // no spaces/slashes
+        if (host === "localhost") return true;
+        const ipv4 = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
+        const hostname = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\.(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?))*$/;
+        if (ipv4.test(host)) {
+            return host.split('.').every(part => {
+                const num = parseInt(part, 10);
+                return num >= 0 && num <= 255;
+            });
+        }
+        return hostname.test(host);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -41,8 +44,8 @@ export function AddWorkerDialog({ onWorkerAdded }: { onWorkerAdded: () => void }
             setError("Worker name is required.");
             return;
         }
-        if (!validateIp(formData.ip)) {
-            setError("Invalid IP Address format (e.g., 192.168.1.10).");
+        if (!validateHost(formData.ip)) {
+            setError("Host invalide : utilisez une IP ou un nom de domaine sans http://");
             return;
         }
 
@@ -101,7 +104,7 @@ export function AddWorkerDialog({ onWorkerAdded }: { onWorkerAdded: () => void }
                             <Check className="w-5 h-5" /> Worker Registered
                         </DialogTitle>
                         <DialogDescription className="text-zinc-400">
-                            Copy this Security Key to your worker's <code>config.json</code> or start script.
+                            The dashboard has pushed this Security Key to the worker automatically. Keep this key in case you need to set it manually in <code>config.json</code> under <code>sharedKey</code>.
                             <br />
                             <span className="text-red-400 font-bold block mt-2">
                                 Warning: You will not be able to see this key again.
@@ -161,7 +164,7 @@ export function AddWorkerDialog({ onWorkerAdded }: { onWorkerAdded: () => void }
                                     id="ip"
                                     value={formData.ip}
                                     onChange={(e) => setFormData({ ...formData, ip: e.target.value })}
-                                    placeholder="192.168.1.x"
+                                placeholder="192.168.1.10 ou worker.example.com"
                                     required
                                 />
                             </div>

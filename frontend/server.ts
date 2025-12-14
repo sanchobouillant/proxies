@@ -8,6 +8,7 @@ import { WsEvents, CommandPayload, ProxyWorker } from '@proxy-farm/shared';
 import prisma from './src/lib/prisma';
 import { TcpProxyManager } from './lib/TcpProxyManager';
 import { randomUUID } from 'crypto';
+import { io as clientIo } from 'socket.io-client';
 const bcrypt = require('bcrypt');
 
 // Ensure env vars are loaded for standalone script
@@ -318,19 +319,36 @@ app.prepare().then(async () => {
                     return;
                 }
 
-                // Simple Server-side IP validation
-                const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$|^localhost$/;
-                if (!ipRegex.test(ip)) {
+                // Host validation: allow IPv4, localhost, or hostname; forbid schemes/paths
+                if (/^https?:\/\//i.test(ip) || /[\s/]/.test(ip)) {
                     res.writeHead(400, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ error: 'Invalid IP address format' }));
+                    res.end(JSON.stringify({ error: 'IP/Host should not include protocol or path' }));
+                    return;
+                }
+                const ipv4 = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
+                const hostname = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\.(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?))*$/;
+                if (!(ip === 'localhost' || ipv4.test(ip) || hostname.test(ip))) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Invalid host format (use IPv4 or hostname, no protocol)' }));
+                    return;
+                }
+
+                const portNum = parseInt(port);
+                if (Number.isNaN(portNum) || portNum < 1 || portNum > 65535) {
+                    res.writeHead(400, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Invalid port' }));
                     return;
                 }
 
                 const apiKey = randomUUID().replace(/-/g, '') + randomUUID().replace(/-/g, ''); // 64 chars hex-like
                 try {
                     const worker = await prisma.worker.create({
-                        data: { name, ip, port: parseInt(port), apiKey }
+                        data: { name, ip, port: portNum, apiKey }
                     });
+
+                    // Attempt to push the key to the worker automatically
+                    bootstrapWorkerKey({ id: worker.id, ip, port: portNum, apiKey })
+                        .catch(err => console.warn(`[Bootstrap] Failed to push key to worker ${worker.id}:`, err?.message || err));
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify(worker));
                 } catch (e: any) {
@@ -401,6 +419,13 @@ app.prepare().then(async () => {
                         where: { id },
                         data: { apiKey }
                     });
+
+                    // Fetch worker connection details to bootstrap the new key
+                    const worker = await prisma.worker.findUnique({ where: { id } });
+                    if (worker?.ip && worker?.port) {
+                        bootstrapWorkerKey({ id, ip: worker.ip, port: worker.port, apiKey })
+                            .catch(err => console.warn(`[Bootstrap] Failed to push regenerated key to worker ${id}:`, err?.message || err));
+                    }
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ success: true, apiKey }));
                 } catch (e) {
@@ -414,6 +439,26 @@ app.prepare().then(async () => {
                 const workers = await prisma.worker.findMany({ include: { proxies: true } });
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify(workers));
+                return;
+            }
+
+            if (req.method === 'DELETE' && pathname?.match(/^\/api\/control\/workers\/[^\/]+$/)) {
+                const parts = pathname.split('/');
+                const id = parts[4];
+
+                try {
+                    // Remove proxies first to satisfy FK constraints
+                    await prisma.proxy.deleteMany({ where: { workerId: id } });
+                    await prisma.worker.delete({ where: { id } });
+                    // Disconnect if connected
+                    workerManager.disconnect(id);
+                    res.writeHead(200, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: true }));
+                } catch (e: any) {
+                    console.error('Error deleting worker:', e);
+                    res.writeHead(500, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ error: 'Failed to delete worker' }));
+                }
                 return;
             }
 
@@ -510,6 +555,37 @@ app.prepare().then(async () => {
         });
     });
 }); // Closing app.prepare()
+
+async function bootstrapWorkerKey(opts: { id: string, ip: string, port: number, apiKey: string }) {
+    const url = `http://${opts.ip}:${opts.port}`;
+    const socket = clientIo(url, {
+        auth: { token: 'bootstrap' },
+        reconnection: false,
+        timeout: 5000
+    });
+
+    return await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+            socket.disconnect();
+            reject(new Error('Bootstrap timed out'));
+        }, 6000);
+
+        socket.on('connect_error', (err: any) => {
+            clearTimeout(timer);
+            reject(err);
+        });
+
+        socket.on('connect', () => {
+            socket.emit('bootstrap:setKey', { sharedKey: opts.apiKey });
+        });
+
+        socket.once('bootstrap:ack', () => {
+            clearTimeout(timer);
+            socket.disconnect();
+            resolve();
+        });
+    });
+}
 
 function getBody(req: any): Promise<any> {
     return new Promise((resolve, reject) => {

@@ -7,6 +7,7 @@ import { ProxyManager } from './proxy/ProxyManager';
 import { SystemMonitor } from './system/SystemMonitor';
 import { ConfigManager } from './system/ConfigManager';
 import { WsEvents, CommandPayload, ProxyWorker } from '@proxy-farm/shared';
+import crypto from 'crypto';
 
 class WorkerAgent {
     private io: Server | null = null;
@@ -16,6 +17,8 @@ class WorkerAgent {
     private system: SystemMonitor;
     private configManager: ConfigManager;
     private workerId: string = '';
+    private sessionKey: Buffer | null = null;
+    private handshakeComplete = false;
     private logBuffer: { level: string, msg: string, timestamp: number }[] = [];
 
     constructor() {
@@ -36,10 +39,11 @@ class WorkerAgent {
     }
 
     private flushLogs() {
+        if (!this.handshakeComplete || !this.sessionKey) return;
         if (this.logBuffer.length > 0 && this.managerSocket && this.managerSocket.connected) {
             console.log(`[Worker] Flushing ${this.logBuffer.length} buffered logs...`);
             this.logBuffer.forEach(log => {
-                this.managerSocket!.emit(WsEvents.Log, log);
+                this.sendSecure(WsEvents.Log, log);
             });
             this.logBuffer = [];
         }
@@ -48,12 +52,14 @@ class WorkerAgent {
     async start() {
         // Load configuration
         const config = await this.configManager.load();
-        this.workerId = config.workerId;
+        if (!config.sharedKey || config.sharedKey.trim().length === 0) {
+            console.warn('[Worker] sharedKey missing. Waiting for bootstrap from manager...');
+        }
 
         // Port configuration
         const port = process.env.WORKER_PORT ? parseInt(process.env.WORKER_PORT) : 3001;
 
-        console.log(`[Worker ${this.workerId}] Starting in LISTENING mode on port ${port}...`);
+        console.log(`[Worker] Starting in LISTENING mode on port ${port}...`);
 
         // Initial hardware scan
         const modems = await this.hardware.scanDevices();
@@ -70,8 +76,15 @@ class WorkerAgent {
         // Authentication Middleware
         this.io.use((socket, next) => {
             const token = socket.handshake.auth.token;
-            // We use the apiKey as the shared secret the Manager must provide
-            if (token === config.apiKey) {
+
+            // Bootstrap mode: allow only if no sharedKey yet and token is 'bootstrap'
+            if (!config.sharedKey || config.sharedKey.trim() === '') {
+                if (token === 'bootstrap') return next();
+                console.warn(`[Worker] Connection denied: waiting for bootstrap key.`);
+                return next(new Error("Authentication error (bootstrap pending)"));
+            }
+
+            if (token === config.sharedKey) {
                 return next();
             }
             console.warn(`[Worker] Validating connection failed. Wrong token.`);
@@ -79,19 +92,40 @@ class WorkerAgent {
         });
 
         this.io.on('connection', (socket) => {
+            const token = socket.handshake.auth.token;
+
+            // Handle bootstrap channel
+            if ((!config.sharedKey || config.sharedKey.trim() === '') && token === 'bootstrap') {
+                console.log('[Worker] Bootstrap connection received. Awaiting shared key...');
+                socket.once('bootstrap:setKey', async (payload: { sharedKey: string }) => {
+                    if (!payload?.sharedKey) {
+                        console.warn('[Worker] Bootstrap failed: missing sharedKey');
+                        socket.disconnect();
+                        return;
+                    }
+                    await this.configManager.setSharedKey(payload.sharedKey);
+                    config.sharedKey = payload.sharedKey;
+                    console.log('[Worker] Shared key stored via bootstrap. Ready for secure connections.');
+                    socket.emit('bootstrap:ack', { ok: true });
+                    socket.disconnect();
+                });
+                return;
+            }
+
             console.log(`[Worker] Manager connected (ID: ${socket.id})`);
             this.managerSocket = socket;
-
-            this.flushLogs();
-            this.register();
+            this.handshakeComplete = false;
+            this.performHandshake(config.sharedKey);
 
             socket.on('disconnect', () => {
                 console.log('[Worker] Manager disconnected');
                 this.managerSocket = null;
+                this.sessionKey = null;
+                this.handshakeComplete = false;
             });
 
-            socket.on(WsEvents.Command, async (payload: CommandPayload) => {
-                await this.handleCommand(payload);
+            socket.on('secure:event', async (packet: any) => {
+                await this.handleSecurePacket(packet);
             });
         });
 
@@ -99,14 +133,89 @@ class WorkerAgent {
         setInterval(() => this.sendStatus(), 5000);
     }
 
-    private async register() {
+    private async performHandshake(sharedKey: string) {
         if (!this.managerSocket) return;
 
+        const nonceWorker = crypto.randomBytes(16).toString('hex');
+        // Step 1: send our nonce
+        this.managerSocket.emit('handshake:init', { nonceWorker });
+
+        // Step 2: wait for ack
+        this.managerSocket.once('handshake:ack', async (data: { nonceManager: string; hmac: string; workerId: string }) => {
+            const { nonceManager, hmac, workerId } = data || {};
+            if (!nonceManager || !hmac || !workerId) {
+                console.error('[Worker] Handshake failed: incomplete ack');
+                this.managerSocket?.disconnect();
+                return;
+            }
+
+            const expected = crypto.createHmac('sha256', sharedKey).update(`${nonceWorker}:${nonceManager}`).digest('hex');
+            if (expected !== hmac) {
+                console.error('[Worker] Handshake failed: HMAC mismatch');
+                this.managerSocket?.disconnect();
+                return;
+            }
+
+            // Derive session key using HKDF (sha256)
+            const hkdf = crypto.createHmac('sha256', sharedKey);
+            hkdf.update(`${nonceWorker}:${nonceManager}`);
+            const session = hkdf.digest();
+            this.sessionKey = session;
+            this.workerId = workerId;
+            this.handshakeComplete = true;
+            console.log('[Worker] Handshake complete. Secure channel established.');
+
+            // Send buffered data now that we can encrypt
+            this.flushLogs();
+            this.register();
+        });
+    }
+
+    private encrypt(payload: any): { iv: string, ciphertext: string, tag: string } {
+        if (!this.sessionKey) throw new Error('Session key not established');
+        const iv = crypto.randomBytes(12);
+        const cipher = crypto.createCipheriv('aes-256-gcm', this.sessionKey.subarray(0, 32), iv);
+        const ciphertext = Buffer.concat([cipher.update(JSON.stringify(payload), 'utf8'), cipher.final()]);
+        const tag = cipher.getAuthTag();
+        return { iv: iv.toString('base64'), ciphertext: ciphertext.toString('base64'), tag: tag.toString('base64') };
+    }
+
+    private decrypt(packet: { iv: string, ciphertext: string, tag: string }) {
+        if (!this.sessionKey) throw new Error('Session key not established');
+        const iv = Buffer.from(packet.iv, 'base64');
+        const ciphertext = Buffer.from(packet.ciphertext, 'base64');
+        const tag = Buffer.from(packet.tag, 'base64');
+        const decipher = crypto.createDecipheriv('aes-256-gcm', this.sessionKey.subarray(0, 32), iv);
+        decipher.setAuthTag(tag);
+        const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+        return JSON.parse(decrypted);
+    }
+
+    private sendSecure(event: WsEvents, payload: any) {
+        if (!this.managerSocket || !this.handshakeComplete) return;
+        const encrypted = this.encrypt({ event, payload });
+        this.managerSocket.emit('secure:event', encrypted);
+    }
+
+    private async handleSecurePacket(packet: { iv: string, ciphertext: string, tag: string }) {
+        if (!this.handshakeComplete) return;
+        try {
+            const { event, payload } = this.decrypt(packet);
+            if (event === WsEvents.Command) {
+                await this.handleCommand(payload as CommandPayload);
+            }
+        } catch (e) {
+            console.error('[Worker] Failed to decrypt secure packet:', e);
+        }
+    }
+
+    private async register() {
+        if (!this.managerSocket || !this.handshakeComplete) return;
+
         const health = await this.system.getHealth();
-        // Respond to manager with our identity
-        this.managerSocket.emit(WsEvents.Register, {
+        this.sendSecure(WsEvents.Register, {
             id: this.workerId,
-            ip: '0.0.0.0', // Not relevant, Manager knows our IP
+            ip: '0.0.0.0',
             port: process.env.WORKER_PORT ? parseInt(process.env.WORKER_PORT) : 3001,
             status: 'ONLINE',
             modems: this.hardware.getModems(),
@@ -116,9 +225,9 @@ class WorkerAgent {
     }
 
     private async sendStatus() {
-        if (this.managerSocket && this.managerSocket.connected) {
+        if (this.managerSocket && this.managerSocket.connected && this.handshakeComplete) {
             const health = await this.system.getHealth();
-            this.managerSocket.emit(WsEvents.StatusUpdate, {
+            this.sendSecure(WsEvents.StatusUpdate, {
                 id: this.workerId,
                 modems: this.hardware.getModems(),
                 health

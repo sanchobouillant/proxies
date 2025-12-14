@@ -3,9 +3,8 @@ import path from 'path';
 import crypto from 'crypto';
 
 interface WorkerConfig {
-    workerId: string;
-    apiKey: string;
-    managerUrl: string;
+    // Single shared secret used to authenticate & derive session keys with the manager
+    sharedKey: string;
 }
 
 export class ConfigManager {
@@ -21,35 +20,50 @@ export class ConfigManager {
 
         try {
             const data = await fs.readFile(this.configPath, 'utf-8');
-            this.config = JSON.parse(data);
-            console.log(`[Config] Loaded existing config for ${this.config?.workerId}`);
+            const parsed = JSON.parse(data);
+
+            // Backward compatibility: migrate legacy shape { workerId, apiKey, managerUrl }
+            if (parsed.apiKey && !parsed.sharedKey) {
+                this.config = { sharedKey: parsed.apiKey };
+                await this.save();
+                console.log('[Config] Migrated legacy config to key-only format.');
+            } else {
+                this.config = parsed as WorkerConfig;
+            }
+
+            if (this.config.sharedKey) {
+                console.log('[Config] Loaded shared key from config.json');
+            } else {
+                console.warn('[Config] Config loaded but no sharedKey found. Worker will wait for pairing.');
+            }
         } catch (error) {
-            console.log('[Config] No existing config found. Generating new identity...');
-            this.config = await this.generate();
+            console.log('[Config] No existing config found. Creating empty config (awaiting pairing)...');
+            this.config = await this.generateEmpty();
             await this.save();
         }
 
         return this.config!;
     }
 
-    private async generate(): Promise<WorkerConfig> {
+    private async generateEmpty(): Promise<WorkerConfig> {
         return {
-            workerId: `worker_${crypto.randomBytes(4).toString('hex')}`,
-            apiKey: crypto.randomBytes(32).toString('hex'),
-            managerUrl: process.env.MANAGER_URL || 'http://localhost:3000'
+            sharedKey: ''
         };
     }
 
     private async save() {
         if (!this.config) return;
         await fs.writeFile(this.configPath, JSON.stringify(this.config, null, 2));
-        console.log(`[Config] Saved identity to ${this.configPath}`);
-        console.log(`[Config] >>> API KEY: ${this.config.apiKey} <<<`);
-        console.log(`[Config] (You will need this key to add the worker in the UI)`);
+        console.log(`[Config] Saved shared key to ${this.configPath}`);
     }
 
     get(): WorkerConfig {
         if (!this.config) throw new Error('Config not loaded');
         return this.config;
+    }
+
+    async setSharedKey(sharedKey: string) {
+        this.config = { sharedKey };
+        await this.save();
     }
 }
