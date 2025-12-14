@@ -16,7 +16,11 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const prisma = new PrismaClient({
-    datasourceUrl: process.env.DATABASE_URL,
+    datasources: {
+        db: {
+            url: process.env.DATABASE_URL
+        }
+    },
     log: ['info', 'warn', 'error']
 });
 const dev = process.env.NODE_ENV !== 'production';
