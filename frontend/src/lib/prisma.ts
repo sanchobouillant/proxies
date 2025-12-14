@@ -1,15 +1,20 @@
 import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
+import { PrismaMariaDb } from '@prisma/adapter-mariadb'
 
-// Standard Prisma client for MySQL.
-// Cached in dev to avoid creating too many connections with hot reloads.
+const connectionString = process.env.DATABASE_URL
+if (!connectionString) {
+    throw new Error('DATABASE_URL is missing. Set it in .env (dev) or the environment (prod).')
+}
+
 const globalForPrisma = globalThis as unknown as {
     prisma: PrismaClient | undefined
 }
 
-export const prisma =
+const prisma =
     globalForPrisma.prisma ??
     new PrismaClient({
+        adapter: new PrismaMariaDb(connectionString),
         log: ['info', 'warn', 'error'],
     })
 
