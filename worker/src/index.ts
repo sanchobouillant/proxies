@@ -1,5 +1,5 @@
 import { setLogCallback } from './logger';
-import { io, Socket } from 'socket.io-client';
+import { Server, Socket } from 'socket.io'; // Server side
 import { createHardwareManager } from './hardware/HardwareFactory';
 import { HardwareManager } from './hardware/HardwareManager';
 import { createProxyManager } from './proxy/ProxyFactory';
@@ -9,7 +9,8 @@ import { ConfigManager } from './system/ConfigManager';
 import { WsEvents, CommandPayload, ProxyWorker } from '@proxy-farm/shared';
 
 class WorkerAgent {
-    private socket: Socket | null = null;
+    private io: Server | null = null;
+    private managerSocket: Socket | null = null;
     private hardware: HardwareManager;
     private proxy: ProxyManager;
     private system: SystemMonitor;
@@ -25,67 +26,73 @@ class WorkerAgent {
 
         // Setup Logger Callback
         setLogCallback((level, msg, timestamp) => {
-            if (this.socket && this.socket.connected) {
-                this.socket.emit(WsEvents.Log, { level, msg, timestamp });
+            if (this.managerSocket && this.managerSocket.connected) {
+                this.managerSocket.emit(WsEvents.Log, { level, msg, timestamp });
             } else {
                 this.logBuffer.push({ level, msg, timestamp });
-                if (this.logBuffer.length > 1000) this.logBuffer.shift(); // plain buffer limit
+                if (this.logBuffer.length > 1000) this.logBuffer.shift();
             }
         });
-
-        // Define flushLogs arrow function
-        this.flushLogs = () => {
-            if (this.logBuffer.length > 0 && this.socket && this.socket.connected) {
-                console.log(`[Worker] Flushing ${this.logBuffer.length} buffered logs...`);
-                this.logBuffer.forEach(log => {
-                    this.socket!.emit(WsEvents.Log, log);
-                });
-                this.logBuffer = [];
-            }
-        };
     }
 
-    private flushLogs: () => void;
+    private flushLogs() {
+        if (this.logBuffer.length > 0 && this.managerSocket && this.managerSocket.connected) {
+            console.log(`[Worker] Flushing ${this.logBuffer.length} buffered logs...`);
+            this.logBuffer.forEach(log => {
+                this.managerSocket!.emit(WsEvents.Log, log);
+            });
+            this.logBuffer = [];
+        }
+    }
 
     async start() {
-        // Load configuration (Persistent Identity)
+        // Load configuration
         const config = await this.configManager.load();
         this.workerId = config.workerId;
 
-        console.log(`[Worker ${this.workerId}] Starting in PASSIVE mode...`);
-        console.log(`[Worker] Manager URL: ${config.managerUrl}`);
+        // Port configuration
+        const port = process.env.WORKER_PORT ? parseInt(process.env.WORKER_PORT) : 3001;
 
-        // Initial hardware scan to populate local state, but DO NOT start proxies
+        console.log(`[Worker ${this.workerId}] Starting in LISTENING mode on port ${port}...`);
+
+        // Initial hardware scan
         const modems = await this.hardware.scanDevices();
         console.log(`[Worker] Found ${modems.length} modems available.`);
 
-        // Connect to Manager
-        this.socket = io(config.managerUrl, {
-            autoConnect: false,
-            reconnection: true,
-            auth: {
-                token: config.apiKey
+        // Start Socket.IO Server
+        this.io = new Server(port, {
+            cors: {
+                origin: "*",
+                methods: ["GET", "POST"]
             }
         });
 
-        this.socket.connect();
+        // Authentication Middleware
+        this.io.use((socket, next) => {
+            const token = socket.handshake.auth.token;
+            // We use the apiKey as the shared secret the Manager must provide
+            if (token === config.apiKey) {
+                return next();
+            }
+            console.warn(`[Worker] Validating connection failed. Wrong token.`);
+            return next(new Error("Authentication error"));
+        });
 
-        this.socket.on('connect', () => {
-            console.log(`[Worker] Connected to Manager.`);
+        this.io.on('connection', (socket) => {
+            console.log(`[Worker] Manager connected (ID: ${socket.id})`);
+            this.managerSocket = socket;
+
             this.flushLogs();
             this.register();
-        });
 
-        this.socket.on('connect_error', (err) => {
-            console.error(`[Worker] Connection error: ${err.message}`);
-        });
+            socket.on('disconnect', () => {
+                console.log('[Worker] Manager disconnected');
+                this.managerSocket = null;
+            });
 
-        this.socket.on('disconnect', () => {
-            console.log('[Worker] Disconnected from Manager');
-        });
-
-        this.socket.on(WsEvents.Command, async (payload: CommandPayload) => {
-            await this.handleCommand(payload);
+            socket.on(WsEvents.Command, async (payload: CommandPayload) => {
+                await this.handleCommand(payload);
+            });
         });
 
         // Start status loop
@@ -93,13 +100,14 @@ class WorkerAgent {
     }
 
     private async register() {
-        if (!this.socket) return;
+        if (!this.managerSocket) return;
 
         const health = await this.system.getHealth();
-        this.socket.emit(WsEvents.Register, {
+        // Respond to manager with our identity
+        this.managerSocket.emit(WsEvents.Register, {
             id: this.workerId,
-            ip: '127.0.0.1', // Should auto-detect real VPN IP in production
-            port: process.env.WORKER_PORT ? parseInt(process.env.WORKER_PORT) : undefined,
+            ip: '0.0.0.0', // Not relevant, Manager knows our IP
+            port: process.env.WORKER_PORT ? parseInt(process.env.WORKER_PORT) : 3001,
             status: 'ONLINE',
             modems: this.hardware.getModems(),
             health,
@@ -108,9 +116,9 @@ class WorkerAgent {
     }
 
     private async sendStatus() {
-        if (this.socket && this.socket.connected) {
+        if (this.managerSocket && this.managerSocket.connected) {
             const health = await this.system.getHealth();
-            this.socket.emit(WsEvents.StatusUpdate, {
+            this.managerSocket.emit(WsEvents.StatusUpdate, {
                 id: this.workerId,
                 modems: this.hardware.getModems(),
                 health
@@ -121,11 +129,7 @@ class WorkerAgent {
     private async handleCommand(payload: CommandPayload) {
         console.log(`[Worker] Received command: ${payload.command} for modem: ${payload.modemId}`);
 
-        // Special case for commands that might not need an existing proxy running,
-        // but START_PROXY typically needs to find the modem interface first.
         const modem = this.hardware.getModems().find(m => m.id === payload.modemId);
-
-        // If modem not found, we can't do much for device-specific commands
         if (!modem) {
             console.warn(`[Worker] Modem interface ${payload.modemId} not found.`);
             return;
@@ -167,7 +171,6 @@ class WorkerAgent {
                 }
                 break;
         }
-
         this.sendStatus();
     }
 }

@@ -10,7 +10,7 @@
     "dependencies": {
         "axios": "^1.6.0",
         "serialport": "^13.0.0",
-        "socket.io-client": "^4.7.0"
+        "socket.io": "^4.8.1"
     },
     "devDependencies": {
         "@proxy-farm/shared": "file:../shared",

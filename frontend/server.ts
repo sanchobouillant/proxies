@@ -1,4 +1,5 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http';
+import { WorkerConnectionManager } from './lib/WorkerConnectionManager';
 import { parse } from 'url';
 import next from 'next';
 import { Server as SocketIOServer } from 'socket.io';
@@ -27,7 +28,7 @@ const handle = app.getRequestHandler();
 const tcpManager = new TcpProxyManager();
 
 // In-memory map of active sockets for workers
-const workerSockets: Map<string, string> = new Map(); // workerId -> socketId
+
 
 // Session handling
 function getCookie(req: IncomingMessage, name: string) {
@@ -360,16 +361,13 @@ app.prepare().then(async () => {
                     }
 
                     // 3. Notify Worker
-                    io.to(workerId).emit(WsEvents.Command, {
-                        command: 'START_PROXY',
-                        modemId: finalModemId,
-                        data: {
-                            id: proxy.id,
-                            port: pPort,
-                            user: authUser,
-                            pass: authPass,
-                            protocol: protocol || 'SOCKS5'
-                        }
+                    // 3. Notify Worker
+                    workerManager.sendCommand(workerId, 'START_PROXY', finalModemId, {
+                        id: proxy.id,
+                        proxyPort: pPort,
+                        user: authUser,
+                        pass: authPass,
+                        protocol: protocol || 'SOCKS5'
                     });
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify(proxy));
@@ -443,16 +441,23 @@ app.prepare().then(async () => {
         cors: { origin: "*", methods: ["GET", "POST"] }
     });
 
+    // Worker Connection Manager (Reverse Connection)
+    // We import it dynamically if needed or just use the imported class
+    const workerManager = new WorkerConnectionManager(io);
+
+    // Periodically refresh list of workers to connect to
+    setInterval(() => workerManager.refreshConnections(), 10000);
+    workerManager.refreshConnections();
+
     // Inject IO into TcpProxyManager so it can emit logs
     tcpManager.setIo(io);
 
-    // Validating middleware
+    // Validating middleware - ONLY for Dashboard now
     io.use(async (socket, next) => {
-        const token = socket.handshake.auth.token;
         const queryRole = socket.handshake.query.role;
         const isDashboard = queryRole === 'dashboard';
 
-        console.log(`[Server] New connection attempt. Role: ${queryRole}, Token: ${token ? 'PRESENT' : 'MISSING'}`);
+        console.log(`[Server] New connection attempt. Role: ${queryRole}`);
 
         if (isDashboard) {
             console.log('[Server] Dashboard connecting...');
@@ -460,189 +465,18 @@ app.prepare().then(async () => {
             return next();
         }
 
-        if (!token) {
-            console.warn('[Server] Auth failed: No token provided');
-            return next(new Error("Authentication error: No token provided"));
-        }
-
-        const worker = await prisma.worker.findUnique({ where: { apiKey: token } });
-        if (!worker) {
-            console.warn(`[Server] Auth failed: Invalid token '${token}'`);
-            return next(new Error("Authentication error: Invalid token"));
-        }
-
-        console.log(`[Server] Worker authenticated: ${worker.name} (${worker.id})`);
-        // Attach worker info to socket if needed
-        (socket as any).workerId = worker.id;
-        next();
+        // We no longer accept Worker connections here.
+        // If it's not dashboard, we reject or ignore.
+        return next(new Error("Unauthorized: Only dashboard allowed on this port"));
     });
 
     io.on('connection', async (socket) => {
-        const workerId = (socket as any).workerId;
-        const role = socket.handshake.query.role; // Access role from handshake
+        const role = socket.handshake.query.role;
 
         if (role === 'dashboard') {
             socket.join('dashboard');
             console.log(`[Server] Socket ${socket.id} joined 'dashboard' room.`);
         }
-
-        console.log(`[Server] Worker connected: ${workerId}`);
-        if (workerId) {
-            workerSockets.set(workerId, socket.id);
-        }
-
-        if (workerId) {
-            await prisma.worker.update({
-                where: { id: workerId },
-                data: {
-                    status: 'ONLINE',
-                    lastSeen: new Date()
-                }
-            });
-            logEvent('WORKER', workerId, 'ONLINE');
-
-            const workerProxies = await prisma.proxy.findMany({ where: { workerId } });
-            for (const proxy of workerProxies) {
-                socket.emit(WsEvents.Command, {
-                    command: 'START_PROXY',
-                    modemId: proxy.modemId,
-                    data: {
-                        proxyPort: proxy.port,
-                        user: proxy.authUser,
-                        pass: proxy.authPass
-                    }
-                });
-                // Also ensure TCP Listener (in case server rebooted but worker stayed up? or just for safety)
-                // We need worker IP. It's in DB.
-                const w = await prisma.worker.findUnique({ where: { id: workerId } });
-                if (w && w.ip) {
-                    tcpManager.ensureProxy(proxy.port, w.ip, proxy.port);
-                }
-            }
-        }
-
-        // Register Handler
-        socket.on(WsEvents.Register, async (data: ProxyWorker) => {
-            // Update live state if needed, but primarily we rely on DB for config
-            // Re-hydrate proxies
-
-            // Update Worker IP/Port if provided
-            if (data.port || data.ip) {
-                await prisma.worker.update({
-                    where: { id: workerId },
-                    data: {
-                        ip: data.ip,
-                        port: data.port,
-                        modems: data.modems as any
-                    }
-                });
-            } else {
-                // Even if IP/Port didn't change, we should update modems if they are present
-                await prisma.worker.update({
-                    where: { id: workerId },
-                    data: {
-                        modems: data.modems as any
-                    }
-                });
-            }
-
-            const proxies = await prisma.proxy.findMany({ where: { workerId } });
-            console.log(`[Server] Re-hydrating ${proxies.length} proxies for ${workerId}`);
-
-            for (const proxy of proxies) {
-                // We need to map `modemId` (from DB) to target modem.
-                // The worker sends its modems in Register payload.
-                const targetModem = data.modems.find(m => m.id === proxy.modemId || m.interfaceName === proxy.modemId);
-
-                if (targetModem) {
-                    socket.emit(WsEvents.Command, {
-                        command: 'START_PROXY',
-                        modemId: targetModem.id,
-                        data: {
-                            proxyPort: proxy.port,
-                            user: proxy.authUser,
-                            pass: proxy.authPass
-                        }
-                    });
-                }
-            }
-
-            // Broadcast state to UI
-            // We force the ID to be the authenticated one prevents duplicate ghosts
-            const safeData = { ...data, id: workerId };
-            io.emit('state_update', [safeData]);
-        });
-
-        socket.on(WsEvents.StatusUpdate, async (data) => {
-            // Update DB with latest stats/modems
-            if (workerId && data.modems) {
-                await prisma.worker.update({
-                    where: { id: workerId },
-                    data: { modems: data.modems as any }
-                }).catch((e: any) => console.error("Failed to update worker status", e));
-            }
-
-            // Broadcast live stats to UI
-            const safeData = { ...data, id: workerId, status: 'ONLINE' };
-            io.emit('state_update', [safeData]);
-        });
-
-        socket.on(WsEvents.Log, async (payload: { level: string, msg: string, timestamp?: number }) => {
-            console.log(`[Server DEBUG] Received Log event from ${workerId}:`, payload);
-            if (workerId) {
-                const savedLog = await prisma.eventLog.create({
-                    data: {
-                        type: 'WORKER',
-                        entityId: workerId,
-                        event: payload.level, // INFO, WARN, ERROR
-                        details: payload.msg,
-                        createdAt: payload.timestamp ? new Date(payload.timestamp) : new Date()
-                    }
-                }).catch((e: any) => console.error("Failed to save worker log", e));
-
-                // Broadcast to dashboard
-                if (savedLog) {
-                    io.to('dashboard').emit('new_log', savedLog);
-                }
-            }
-        });
-
-        socket.on('disconnect', async () => {
-            const workerId = (socket as any).workerId; // Ensure workerId is available here
-            if (workerId) {
-                const currentSocketId = workerSockets.get(workerId);
-                // Only mark offline if the disconnecting socket is the CURRENT active socket.
-                // If the worker reconnected, currentSocketId will be different (the new one).
-                if (currentSocketId === socket.id) {
-                    console.log(`[Server] Worker disconnected: ${workerId}`);
-                    await prisma.worker.update({
-                        where: { id: workerId },
-                        data: { status: 'OFFLINE' }
-                    });
-
-                    // Create and broadcast OFFLINE log
-                    const offlineLog = await prisma.eventLog.create({
-                        data: {
-                            type: 'WORKER',
-                            entityId: workerId,
-                            event: 'OFFLINE',
-                            details: 'Worker disconnected'
-                        }
-                    }).catch((e: any) => console.error("Failed to save offline log", e));
-
-                    if (offlineLog) {
-                        io.to('dashboard').emit('new_log', offlineLog);
-                    }
-
-                    workerSockets.delete(workerId);
-
-                    // Broadcast offline state to UI
-                    io.emit('state_update', [{ id: workerId, status: 'OFFLINE' }]);
-                } else {
-                    console.log(`[Server] Old socket disconnected for ${workerId} (ignored).`);
-                }
-            }
-        });
     });
 
     // Startup cleanup: Reset all workers to OFFLINE
