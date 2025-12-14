@@ -5,7 +5,7 @@ import { createPool } from 'mariadb';
 
 const prismaClientSingleton = () => {
     // Use connection pool for adapter
-    const connectionString = process.env.DATABASE_URL || '';
+    const connectionString = (process.env.DATABASE_URL || '').replace('mysql://', 'mariadb://');
     const pool = createPool(connectionString);
     const adapter = new PrismaMariaDb(pool as any);
 
