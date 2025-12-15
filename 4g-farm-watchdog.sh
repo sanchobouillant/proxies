@@ -261,19 +261,38 @@ program_pair() {
     # Laisser le temps au noyau de créer l'interface si pas deja la
     local ifc
     ifc=$(find_iface_for_dev "$dev" || true)
-    
+
     perlog "$tag" "qmi start (direct wds)"
     
-    # 0. Ensure Interface is DOWN to allow Raw-IP change
-    if [[ -n "$ifc" ]]; then
-       ip link set "$ifc" down >/dev/null 2>&1 || true
-    fi
-
-    # 1. Config Raw-IP (Best effort, but now kernel should accept it)
-    # On loggue l'erreur si ça fail pour debug
-    local raw_log
-    if ! raw_log=$(qmicli -d "$dev" --device-open-proxy --wda-set-data-format=raw-ip 2>&1); then
-         perlog "$tag" "[WARN] Raw-IP Set Failed: $raw_log"
+    # 0. CHECK DATA FORMAT (Raw-IP vs 802-3)
+    # Au lieu de forcer raw-ip (ce qui fail si le modem est capricieux), on demande ce qu'il veut.
+    local qmi_format
+    if qmi_format=$(qmicli -d "$dev" --device-open-proxy --wda-get-data-format 2>/dev/null); then
+       if echo "$qmi_format" | grep -q "raw-ip"; then
+          perlog "$tag" "Modem est en mode Raw-IP. Sync Kernel..."
+          if [[ -n "$ifc" ]]; then
+             ip link set "$ifc" down >/dev/null 2>&1 || true
+             echo 'Y' > "/sys/class/net/$ifc/qmi/raw_ip" 2>/dev/null || perlog "$tag" "[WARN] Echec écriture raw_ip=Y"
+             ip link set "$ifc" up >/dev/null 2>&1 || true
+          fi
+       else
+          perlog "$tag" "Modem est en mode 802-3 (Ethernet)."
+          if [[ -n "$ifc" ]]; then
+             # S'assurer que le kernel n'est PAS en raw-ip
+             if [[ -f "/sys/class/net/$ifc/qmi/raw_ip" ]]; then
+                ip link set "$ifc" down >/dev/null 2>&1 || true
+                echo 'N' > "/sys/class/net/$ifc/qmi/raw_ip" 2>/dev/null || true
+                ip link set "$ifc" up >/dev/null 2>&1 || true
+             fi
+          fi
+       fi
+    else
+       perlog "$tag" "[WARN] Impossible de lire le format de données wda. On tente raw-ip par défaut."
+       # Fallback: on tente de forcer raw-ip comme avant
+       if [[ -n "$ifc" ]]; then
+          ip link set "$ifc" down >/dev/null 2>&1 || true
+       fi
+       qmicli -d "$dev" --device-open-proxy --wda-set-data-format=raw-ip >/dev/null 2>&1 || true
     fi
 
     # 2. Start Network
