@@ -116,10 +116,9 @@ wait_registered() {
     local S
     S=$(qmicli -d "$dev" --device-open-proxy --nas-get-serving-system 2>/dev/null || true)
     if echo "$S" | grep -q "Registration state: 'registered'"; then
-      if echo "$S" | grep -q "PS: 'attached'"; then
-        perlog "${dev##*/}" "Modem registered & PS attached"
-        return 0
-      fi
+      # On accepte "registered" même si PS n'est pas "attached" (le start network forcera l'attachement)
+      perlog "${dev##*/}" "Modem registered (PS state ignored)"
+      return 0
     fi
     if (( i % 10 == 0 )); then
       perlog "${dev##*/}" "Attente registration… ($i/$tries)"
@@ -239,9 +238,9 @@ ensure_routing() {
     perlog "$tag" "Ajout ip rule: from $SUBNET lookup $table"
   fi
 
-  # LOG de debug de la table
-  perlog "$tag" "Routes pour table $table:"
-  ip route show table "$table" | sed "s/^/[${tag}][route-$table] /" || true
+  # LOG de debug de la table (Trop verbeux en boucle health-check)
+  # perlog "$tag" "Routes pour table $table:"
+  # ip route show table "$table" | sed "s/^/[${tag}][route-$table] /" || true
 }
 
 ### PROGRAMMATION D’UNE PAIRE (modem + bridge) ###
