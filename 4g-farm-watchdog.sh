@@ -22,7 +22,7 @@ declare -a QMI_DEVS=()
 N=0
 
 ### LOGGING ###
-log()   { echo "[$(date '+%F %T')] $*" | tee -a "$LOG"; }
+log()   { echo "[$(date '+%F %T')] $*" | tee -a "$LOG" >&2; }
 perlog(){ local tag="$1"; shift; log "[$tag] $*"; }
 
 ### PRÉREQUIS ###
@@ -228,9 +228,11 @@ program_pair() {
     set +e
 
     perlog "$tag" "Nettoyage session QMI précédente"
-    qmi-network "$dev" stop >/dev/null 2>&1
-    rm -f "/tmp/qmi-network-state-${dev##*/}"
-    pkill -f "qmicli -d $dev" || true
+    # qmi-network stop ne marche pas bien avec proxy, on tente un stop best-effort via qmicli (CID inconnu = fail souvent, pas grave)
+    # qmicli -d "$dev" --device-open-proxy --wds-stop-network=... (impossible sans CID)
+    # On laisse courir, le start suivant ou le reset gérera.
+    # rm -f "/tmp/qmi-network-state-${dev##*/}"
+    # pkill -f "qmicli -d $dev" || true
 
     # Online + LTE
     qmicli -d "$dev" --device-open-proxy --dms-set-operating-mode=online \
@@ -252,9 +254,16 @@ program_pair() {
       fi
     fi
 
-    perlog "$tag" "qmi start"
-    if ! qmi-network "$dev" start >/dev/null 2>&1; then
-      perlog "$tag" "qmi-network start FAILED → retry dans 3s"
+    perlog "$tag" "qmi start (direct wds)"
+    # REMPLACÉ: qmi-network "$dev" start
+    # RAISON: qmi-network ne gère pas le mode proxy (--device-open-proxy) et échoue si qmi-proxy tourne.
+    
+    # 1. Config Raw-IP (Best effort)
+    qmicli -d "$dev" --device-open-proxy --wda-set-data-format=raw-ip >/dev/null 2>&1 || true
+
+    # 2. Start Network
+    if ! qmicli -d "$dev" --device-open-proxy --wds-start-network="apn='${APN}',ip-type=4" --client-no-release-cid >/dev/null 2>&1; then
+      perlog "$tag" "qmi start (wds) FAILED → retry dans 3s"
       sleep 3
       continue
     fi
@@ -310,10 +319,9 @@ program_pair() {
 
       # 2) Restart QMI session "light"
       set +e
-      perlog "$tag" "Tentative restart QMI (sans reset physique)"
-      qmi-network "$dev" stop >/dev/null 2>&1
-      rm -f "/tmp/qmi-network-state-${dev##*/}"
-      if qmi-network "$dev" start >/dev/null 2>&1; then
+      perlog "$tag" "Tentative restart QMI (Start WDS direct)"
+      # On ne stop pas vraiment (pas de CID), on relance start
+      if qmicli -d "$dev" --device-open-proxy --wds-start-network="apn='${APN}',ip-type=4" --client-no-release-cid >/dev/null 2>&1; then
         sleep 5
         # Re-détection interface (au cas où elle change)
         local new_ifc
