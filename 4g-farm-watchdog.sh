@@ -289,6 +289,8 @@ program_pair() {
   perlog "$tag" "=== worker start (table=$table) ==="
 
   qmi_proxy_up "$dev"
+  
+  local retry_count=0
 
   while true; do
     set +e
@@ -372,9 +374,21 @@ program_pair() {
          perlog "$tag" "[DIAGNOSTIC SIM] $line"
       done || true
       
+      ((retry_count++))
+      if (( retry_count >= 5 )); then
+         perlog "$tag" "5 echecs consécutifs du start network → Force Soft Reset"
+         set -e
+         soft_reset "$tag" "$dev" || true
+         retry_count=0
+         sleep 10
+      fi
+      
       sleep 3
       continue
     fi
+    
+    # Reset count on success
+    retry_count=0
     
     # Re-verify interface
     sleep 2
