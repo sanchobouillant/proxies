@@ -30,7 +30,8 @@ import {
   User,
   Users,
   LogOut,
-  ZapOff
+  ZapOff,
+  Globe
 } from "lucide-react"; import { motion, AnimatePresence } from "framer-motion";
 import { AddWorkerDialog } from "@/components/management/AddWorkerDialog";
 import Link from "next/link";
@@ -473,155 +474,154 @@ export default function Dashboard() {
                               }
 
                               return (
-                                <div key={proxy.id} className={`${cardBg} rounded-xl p-4 ring-1 ${ringColor} transition-all hover:bg-gray-100/80 dark:hover:bg-zinc-900/80`}>
-                                  <div className="flex items-center justify-between mb-4">
-                                    <div className="flex flex-col gap-1">
-                                      <div className="flex items-center gap-2 mb-1">
-                                        <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                <div key={proxy.id} className={`${cardBg} rounded-xl p-4 ring-1 ${ringColor} transition-all hover:bg-gray-100/80 dark:hover:bg-zinc-900/80 space-y-4`}>
+
+                                  {/* HEADER: Name + Status/Edit Toolbar */}
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex flex-col gap-0.5">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
                                           {proxy.name}
                                         </span>
-                                        {modem && (
-                                          <>
-                                            <span className="text-[10px] text-gray-400">•</span>
-                                            <span className="text-[10px] text-gray-500 max-w-[150px] truncate" title={(modem as any).operator}>
-                                              {(modem as any).operator || 'Unknown Network'}
-                                            </span>
-                                          </>
-                                        )}
                                       </div>
-
-                                      <div className="flex items-center gap-2">
-                                        <div className="p-1.5 rounded-md bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
-                                          <ShieldCheck className="w-3 h-3" />
-                                        </div>
-                                        <div>
-                                          <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Proxy Address</div>
-                                          <div className="font-mono text-xs select-all text-gray-900 dark:text-gray-100 font-medium break-all">
-                                            socks5://{balancerIp || (typeof window !== 'undefined' ? window.location.hostname : 'localhost')}:{proxy.port}
-                                          </div>
-                                        </div>
-
+                                      <div className="text-[11px] text-gray-500 font-medium truncate max-w-[120px]" title={(modem as any)?.operator}>
+                                        {(modem as any)?.operator || 'Unknown Network'}
                                       </div>
-
-                                      {modem && (modem as any).ip && (
-                                        <div className="flex items-center gap-2 mt-1 ml-9">
-                                          <div className="text-[10px] text-gray-400">
-                                            Public IP: <span className="font-mono text-gray-600 dark:text-gray-300">{(modem as any).ip}</span>
-                                          </div>
-                                        </div>
-                                      )}
                                     </div>
 
-                                    <div className="flex items-center gap-2">
-                                      {isDetached ? (
-                                        <Badge variant="destructive" className="text-[10px] h-5">
-                                          Modem Not Found
-                                        </Badge>
-                                      ) : isProxyRunning ? (
-                                        <Badge variant="outline" className="text-[10px] h-5 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800">
-                                          Active
-                                        </Badge>
-                                      ) : hasInternet ? (
-                                        <Badge variant="outline" className="text-[10px] h-5 bg-gray-50 text-gray-600 border-gray-200 dark:bg-zinc-800 dark:text-gray-400 dark:border-zinc-700">
-                                          Stopped
-                                        </Badge>
-                                      ) : (
-                                        <Badge variant="outline" className="text-[10px] h-5 bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800">
-                                          Disconnected
-                                        </Badge>
-                                      )}
-
-                                      {isLocked && (
-                                        <div className="text-orange-500 bg-orange-100 dark:bg-orange-900/20 p-0.5 rounded" title="SIM Locked (Missing PIN)">
-                                          <Lock className="w-3 h-3" />
-                                        </div>
-                                      )}
-                                      {isError && (
-                                        <div className="text-red-500 bg-red-100 dark:bg-red-900/20 p-0.5 rounded" title="SIM Error">
-                                          <AlertTriangle className="w-3 h-3" />
-                                        </div>
-                                      )}
-
+                                    {/* Right Toolbar */}
+                                    <div className="flex items-center gap-1.5 bg-white/40 dark:bg-black/20 p-1 rounded-lg border border-gray-100 dark:border-zinc-800">
+                                      {/* Signal */}
                                       {modem && (
-                                        <div className="pl-2 border-l border-gray-100 dark:border-zinc-800 text-gray-400 flex items-center gap-1.5">
+                                        <div className="flex items-center gap-1 px-1.5 py-0.5 border-r border-gray-200 dark:border-zinc-700">
                                           <SignalStrength quality={modem.signalQuality || 0} />
-                                          <span className="text-[10px] font-mono">{modem.signalQuality || 0}%</span>
                                         </div>
                                       )}
-                                      <ProxyEditDialog
-                                        proxy={proxy}
-                                        worker={worker as any}
-                                        onUpdated={(p) => {
-                                          setWorkers(prev => prev.map(w => w.id === worker.id ? { ...w, proxies: (w.proxies || []).map((pr: any) => pr.id === p.id ? { ...pr, ...p } : pr) } : w));
-                                        }}
-                                        onDeleted={(id) => {
-                                          setWorkers(prev => prev.map(w => w.id === worker.id ? { ...w, proxies: (w.proxies || []).filter((pr: any) => pr.id !== id) } : w));
-                                        }}
-                                      />
+
+                                      {/* Status Badge */}
+                                      {isDetached ? (
+                                        <div className="w-2 h-2 rounded-full bg-red-400" title="Modem Not Found"></div>
+                                      ) : isProxyRunning ? (
+                                        <div className="flex items-center gap-1.5 px-1.5">
+                                          <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] animate-pulse"></div>
+                                        </div>
+                                      ) : hasInternet ? (
+                                        <div className="w-2 h-2 rounded-full bg-gray-400" title="Stopped"></div>
+                                      ) : (
+                                        <div className="w-2 h-2 rounded-full bg-orange-400" title="Disconnected"></div>
+                                      )}
+
+                                      {/* Edit Button */}
+                                      <div className="pl-1 border-l border-gray-200 dark:border-zinc-700">
+                                        <ProxyEditDialog
+                                          proxy={proxy}
+                                          worker={worker as any}
+                                          onUpdated={(p) => {
+                                            setWorkers(prev => prev.map(w => w.id === worker.id ? { ...w, proxies: (w.proxies || []).map((pr: any) => pr.id === p.id ? { ...pr, ...p } : pr) } : w));
+                                          }}
+                                          onDeleted={(id) => {
+                                            setWorkers(prev => prev.map(w => w.id === worker.id ? { ...w, proxies: (w.proxies || []).filter((pr: any) => pr.id !== id) } : w));
+                                          }}
+                                        />
+                                      </div>
                                     </div>
                                   </div>
 
-                                  <div className="space-y-3">
-                                    <div className="flex justify-between text-sm py-1 border-b border-gray-100 dark:border-zinc-800/50">
-                                      <span className="text-gray-500 dark:text-zinc-500">IP Address</span>
-                                      <span className="font-mono text-gray-700 dark:text-zinc-300">{modem?.ipAddress || '---'}</span>
+                                  {/* INFO BLOCK: Address & IP */}
+                                  <div className="bg-white/60 dark:bg-black/20 rounded-lg p-2.5 space-y-2 border border-black/5 dark:border-white/5">
+
+                                    {/* Proxy Address */}
+                                    <div className="flex items-start gap-2.5">
+                                      <div className="p-1 rounded bg-blue-50/50 dark:bg-blue-900/10 text-blue-500 mt-0.5 shrink-0">
+                                        <ShieldCheck className="w-3.5 h-3.5" />
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <div className="text-[10px] uppercase text-gray-400 font-semibold tracking-wider mb-0.5">Proxy Address</div>
+                                        <div className="font-mono text-[11px] text-gray-700 dark:text-gray-300 break-all leading-tight">
+                                          socks5://{balancerIp || (typeof window !== 'undefined' ? window.location.hostname : 'localhost')}:{proxy.port}
+                                        </div>
+                                      </div>
                                     </div>
 
-                                    <div className="grid grid-cols-3 gap-2">
-                                      <CopyProxyButton
-                                        proxy={proxy}
-                                        balancerIp={balancerIp}
-                                        workerIp={worker.ip}
-                                        modem={modem}
-                                      />
+                                    <div className="h-px bg-gray-100/50 dark:bg-zinc-800/50 w-full" />
 
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="w-full h-8 text-xs font-medium border-gray-200 dark:border-zinc-700"
-                                            onClick={() => modem && sendCommand(worker.id, modem.id, 'REBOOT')}
-                                            disabled={!modem}
-                                          >
-                                            <RefreshCw className="w-3 h-3" />
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p>Restart Modem</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className={`w-full h-8 text-xs font-medium border-gray-200 dark:border-zinc-700 hover:bg-white dark:hover:bg-zinc-800 transition-colors ${!isProxyRunning ? 'text-green-600 dark:text-green-400 hover:text-green-700' : 'text-orange-600 dark:text-orange-400 hover:text-orange-700'}`}
-                                            onClick={() => modem && sendCommand(worker.id, modem.id, !isProxyRunning ? 'START_PROXY' : 'STOP_PROXY', { id: proxy.id, proxyPort: proxy.port })}
-                                            disabled={!modem}
-                                          >
-                                            {!isProxyRunning ? (
-                                              <>
-                                                <Play className="w-3 h-3 mr-1.5" />
-                                                Start
-                                              </>
-                                            ) : (
-                                              <>
-                                                <Square className="w-3 h-3 mr-1.5" />
-                                                Stop
-                                              </>
-                                            )}
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          <p>{!isProxyRunning ? 'Start Proxy' : 'Stop Proxy'}</p>
-                                        </TooltipContent>
-                                      </Tooltip>
+                                    {/* IP Address */}
+                                    <div className="flex items-start gap-2.5">
+                                      <div className="p-1 rounded bg-purple-50/50 dark:bg-purple-900/10 text-purple-500 mt-0.5 shrink-0">
+                                        <Globe className="w-3.5 h-3.5" />
+                                      </div>
+                                      <div className="min-w-0 flex-1">
+                                        <div className="text-[10px] uppercase text-gray-400 font-semibold tracking-wider mb-0.5">Public IP</div>
+                                        <div className="font-mono text-[11px] text-gray-700 dark:text-gray-300">
+                                          {(modem as any)?.ipAddress || '---'}
+                                        </div>
+                                      </div>
                                     </div>
+
+                                    {/* Errors/Locks inline if present */}
+                                    {(isLocked || isError) && (
+                                      <div className="pt-1 flex gap-2">
+                                        {isLocked && <Badge variant="outline" className="text-orange-600 bg-orange-50 border-orange-200 h-5 px-1.5 gap-1"><Lock className="w-3 h-3" /> SIM Locked</Badge>}
+                                        {isError && <Badge variant="destructive" className="h-5 px-1.5 gap-1"><AlertTriangle className="w-3 h-3" /> Error</Badge>}
+                                      </div>
+                                    )}
+
+                                  </div>
+
+                                  <div className="grid grid-cols-3 gap-2">
+                                    <CopyProxyButton
+                                      proxy={proxy}
+                                      balancerIp={balancerIp}
+                                      workerIp={worker.ip}
+                                      modem={modem}
+                                    />
+
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          className="w-full h-8 text-xs font-medium border-gray-200 dark:border-zinc-700"
+                                          onClick={() => modem && sendCommand(worker.id, modem.id, 'REBOOT')}
+                                          disabled={!modem}
+                                        >
+                                          <RefreshCw className="w-3 h-3" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Restart Modem</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          className={`w-full h-8 text-xs font-medium border-gray-200 dark:border-zinc-700 hover:bg-white dark:hover:bg-zinc-800 transition-colors ${!isProxyRunning ? 'text-green-600 dark:text-green-400 hover:text-green-700' : 'text-orange-600 dark:text-orange-400 hover:text-orange-700'}`}
+                                          onClick={() => modem && sendCommand(worker.id, modem.id, !isProxyRunning ? 'START_PROXY' : 'STOP_PROXY', { id: proxy.id, proxyPort: proxy.port })}
+                                          disabled={!modem}
+                                        >
+                                          {!isProxyRunning ? (
+                                            <>
+                                              <Play className="w-3 h-3 mr-1.5" />
+                                              Start
+                                            </>
+                                          ) : (
+                                            <>
+                                              <Square className="w-3 h-3 mr-1.5" />
+                                              Stop
+                                            </>
+                                          )}
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>{!isProxyRunning ? 'Start Proxy' : 'Stop Proxy'}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
                                   </div>
                                 </div>
-                              )
+                              );
                             });
                             return proxyCards;
                           })()}
