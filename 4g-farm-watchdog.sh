@@ -275,6 +275,12 @@ ensure_routing() {
     perlog "$tag" "Ajout ip rule: from $SUBNET lookup $table"
   fi
 
+  # NAT sortant pour ce subnet sur l'interface modem
+  if ! iptables -t nat -C POSTROUTING -s "$SUBNET" -o "$ifc" -j MASQUERADE 2>/dev/null; then
+    iptables -t nat -A POSTROUTING -s "$SUBNET" -o "$ifc" -j MASQUERADE
+    perlog "$tag" "Ajout iptables MASQUERADE: $SUBNET -> $ifc"
+  fi
+
   # LOG de debug de la table (Trop verbeux en boucle health-check)
   # perlog "$tag" "Routes pour table $table:"
   # ip route show table "$table" | sed "s/^/[${tag}][route-$table] /" || true
