@@ -325,8 +325,9 @@ program_pair() {
     fi
 
     # 2. Start Network
-    if ! qmicli -d "$dev" --device-open-proxy --wds-start-network="apn='${APN}',ip-type=4" --client-no-release-cid >/dev/null 2>&1; then
-      perlog "$tag" "qmi start (wds) FAILED → retry dans 3s"
+    local wds_log
+    if ! wds_log=$(qmicli -d "$dev" --device-open-proxy --wds-start-network="apn='${APN}',ip-type=4" --client-no-release-cid 2>&1); then
+      perlog "$tag" "qmi start (wds) FAILED: $wds_log"
       sleep 3
       continue
     fi
@@ -394,7 +395,8 @@ program_pair() {
       set +e
       perlog "$tag" "Tentative restart QMI (Start WDS direct)"
       # On ne stop pas vraiment (pas de CID), on relance start
-      if qmicli -d "$dev" --device-open-proxy --wds-start-network="apn='${APN}',ip-type=4" --client-no-release-cid >/dev/null 2>&1; then
+      local restart_log
+      if restart_log=$(qmicli -d "$dev" --device-open-proxy --wds-start-network="apn='${APN}',ip-type=4" --client-no-release-cid 2>&1); then
         sleep 5
         # Re-détection interface (au cas où elle change)
         local new_ifc
