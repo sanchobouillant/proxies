@@ -330,9 +330,10 @@ program_pair() {
       perlog "$tag" "qmi start (wds) FAILED: $wds_log"
       
       # Diagnostic SIM/PIN (Unconditional)
-      local pin_status
-      pin_status=$(qmicli -d "$dev" --device-open-proxy --dms-uim-get-pin-status 2>&1 || true)
-      perlog "$tag" "[DIAGNOSTIC SIM] $pin_status"
+      # On utilise --uim-get-card-status car dms-uim-get-pin-status retourne NotSupported sur certains firmwares
+      qmicli -d "$dev" --device-open-proxy --uim-get-card-status 2>&1 | grep -iE "card state|application state|pin1 state" | while read -r line; do
+         perlog "$tag" "[DIAGNOSTIC SIM] $line"
+      done || true
       
       sleep 3
       continue
@@ -371,6 +372,9 @@ program_pair() {
     local IP4
     IP4=$(ip -4 -o addr show dev "$ifc" | awk '{print $4}')
     perlog "$tag" "UP $IP4 | TABLE=$table"
+    
+    # Laisser le temps au routage de se stabiliser avant le premier ping
+    sleep 5
 
     ### BOUCLE HEALTH-CHECK ###
     while true; do
@@ -417,8 +421,8 @@ program_pair() {
         fi
       else
         perlog "$tag" "Restart QMI Failed: $restart_log"
-        # Diagnostic SIM/PIN (Unconditional pipe)
-        qmicli -d "$dev" --device-open-proxy --dms-uim-get-pin-status 2>&1 | while read -r line; do
+        # Diagnostic SIM/PIN (UIM service is more robust)
+        qmicli -d "$dev" --device-open-proxy --uim-get-card-status 2>&1 | grep -iE "card state|application state|pin1 state" | while read -r line; do
            perlog "$tag" "[DIAGNOSTIC SIM] $line"
         done || true
       fi
