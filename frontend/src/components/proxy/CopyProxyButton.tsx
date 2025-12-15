@@ -13,15 +13,20 @@ interface CopyProxyButtonProps {
 export function CopyProxyButton({ workerIp, modem, proxy, balancerIp }: CopyProxyButtonProps) {
     const [copied, setCopied] = useState(false);
 
-    const handleCopy = () => {
+    const handleCopy = async () => {
         // Logic matches page.tsx display
         const host = balancerIp || (typeof window !== 'undefined' ? window.location.hostname : 'localhost');
         const auth = proxy.authUser && proxy.authPass ? `${proxy.authUser}:${proxy.authPass}@` : '';
-        const connectionString = `socks5://${auth}${host}:${proxy.port}`;
+        const protocol = proxy.protocol ? proxy.protocol.toLowerCase() : 'socks5';
+        const connectionString = `${protocol}://${auth}${host}:${proxy.port}`;
 
-        navigator.clipboard.writeText(connectionString);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        try {
+            await navigator.clipboard.writeText(connectionString);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch (err) {
+            console.error('Failed to copy text: ', err);
+        }
     };
 
     return (

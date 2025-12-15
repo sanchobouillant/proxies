@@ -213,9 +213,11 @@ class WorkerAgent {
     private async sendStatus() {
         if (this.managerSocket && this.managerSocket.connected && this.handshakeComplete) {
             const health = await this.system.getHealth();
+
+            const modems = this.hardware.getModems();
             this.sendSecure(WsEvents.StatusUpdate, {
                 id: this.workerId,
-                modems: this.hardware.getModems(),
+                modems: modems,
                 health
             });
         }
@@ -262,6 +264,7 @@ class WorkerAgent {
                     modem.user = payload.data.user;
                     modem.pass = payload.data.pass;
                     modem.protocol = payload.data.protocol;
+                    (modem as any).proxyStatus = 'ACTIVE';
                     await this.proxy.startProxy(modem);
                 }
                 break;
@@ -269,6 +272,12 @@ class WorkerAgent {
             case 'STOP_PROXY':
                 console.log(`[Worker] Stopping proxy on ${modem.interfaceName}`);
                 await this.proxy.stopProxy(modem);
+                // Clear proxy details from modem state
+                delete (modem as any).proxyPort;
+                delete (modem as any).user;
+                delete (modem as any).pass;
+                delete (modem as any).protocol;
+                (modem as any).proxyStatus = 'STOPPED';
                 break;
 
             case 'REBOOT':

@@ -30,8 +30,7 @@ import {
   User,
   Users,
   LogOut,
-  ZapOff,
-  Trash2
+  ZapOff
 } from "lucide-react"; import { motion, AnimatePresence } from "framer-motion";
 import { AddWorkerDialog } from "@/components/management/AddWorkerDialog";
 import Link from "next/link";
@@ -57,7 +56,7 @@ import { WorkerInfoDialog } from "@/components/management/WorkerInfoDialog";
 import { SettingsDialog } from "@/components/management/SettingsDialog";
 import Image from "next/image";
 import mascot from "@/../public/mascot.png";
-import {WorkerEditDialog} from "@/components/management/WorkerEditDialog";
+import { WorkerEditDialog } from "@/components/management/WorkerEditDialog";
 
 let socket: Socket;
 
@@ -431,22 +430,8 @@ export default function Dashboard() {
                               onUpdated={(w) => {
                                 setWorkers(prev => prev.map(p => p.id === w.id ? { ...p, name: w.name, ip: w.ip, port: w.port } : p));
                               }}
+                              onDelete={async () => await deleteWorker(worker.id)}
                             />
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-red-500 hover:text-red-700 dark:hover:text-red-300"
-                                  onClick={() => deleteWorker(worker.id)}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Delete worker</p>
-                              </TooltipContent>
-                            </Tooltip>
                             <Badge variant="outline" className={worker.status === 'ONLINE' ? "bg-emerald-50/50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800" : "bg-gray-100 text-gray-500"}>
                               {worker.status || 'OFFLINE'}
                             </Badge>
@@ -469,7 +454,10 @@ export default function Dashboard() {
                               const hasInternet = modem?.status === 'ONLINE' && !!(modem as any).ipAddress;
                               const isLocked = modem?.simStatus === 'LOCKED';
                               const isError = modem?.simStatus === 'ERROR';
-                              const isStopped = false; // Logic for 'Stopped' if we tracked it in DB, currently assumed active if in DB?
+                              const isProxyRunning = modem && (
+                                (modem as any).proxyStatus === 'ACTIVE' ||
+                                ((modem as any).proxyPort === proxy.port)
+                              );
 
                               // Determine Status Color
                               let cardBg = "bg-gray-50/80 dark:bg-zinc-950/50";
@@ -479,6 +467,9 @@ export default function Dashboard() {
                                 // Pale Red for any "Down" state
                                 cardBg = "bg-red-50/50 dark:bg-red-900/10";
                                 ringColor = "ring-red-100 dark:ring-red-900/30";
+                              } else if (isProxyRunning) {
+                                cardBg = "bg-emerald-50/30 dark:bg-emerald-900/10";
+                                ringColor = "ring-emerald-100 dark:ring-emerald-900/30";
                               }
 
                               return (
@@ -509,16 +500,7 @@ export default function Dashboard() {
                                             socks5://{proxy.authUser && proxy.authPass ? `${proxy.authUser}:${proxy.authPass}@` : ''}{balancerIp || (typeof window !== 'undefined' ? window.location.hostname : 'localhost')}:{proxy.port}
                                           </div>
                                         </div>
-                                        <ProxyEditDialog
-                                          proxy={proxy}
-                                          worker={worker as any}
-                                          onUpdated={(p) => {
-                                            setWorkers(prev => prev.map(w => w.id === worker.id ? { ...w, proxies: (w.proxies || []).map((pr: any) => pr.id === p.id ? { ...pr, ...p } : pr) } : w));
-                                          }}
-                                          onDeleted={(id) => {
-                                            setWorkers(prev => prev.map(w => w.id === worker.id ? { ...w, proxies: (w.proxies || []).filter((pr: any) => pr.id !== id) } : w));
-                                          }}
-                                        />
+
                                       </div>
 
                                       {modem && (modem as any).ip && (
@@ -535,9 +517,13 @@ export default function Dashboard() {
                                         <Badge variant="destructive" className="text-[10px] h-5">
                                           Modem Not Found
                                         </Badge>
-                                      ) : hasInternet ? (
+                                      ) : isProxyRunning ? (
                                         <Badge variant="outline" className="text-[10px] h-5 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800">
-                                          Connected
+                                          Active
+                                        </Badge>
+                                      ) : hasInternet ? (
+                                        <Badge variant="outline" className="text-[10px] h-5 bg-gray-50 text-gray-600 border-gray-200 dark:bg-zinc-800 dark:text-gray-400 dark:border-zinc-700">
+                                          Stopped
                                         </Badge>
                                       ) : (
                                         <Badge variant="outline" className="text-[10px] h-5 bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800">
@@ -562,6 +548,16 @@ export default function Dashboard() {
                                           <span className="text-[10px] font-mono">{modem.signalQuality || 0}%</span>
                                         </div>
                                       )}
+                                      <ProxyEditDialog
+                                        proxy={proxy}
+                                        worker={worker as any}
+                                        onUpdated={(p) => {
+                                          setWorkers(prev => prev.map(w => w.id === worker.id ? { ...w, proxies: (w.proxies || []).map((pr: any) => pr.id === p.id ? { ...pr, ...p } : pr) } : w));
+                                        }}
+                                        onDeleted={(id) => {
+                                          setWorkers(prev => prev.map(w => w.id === worker.id ? { ...w, proxies: (w.proxies || []).filter((pr: any) => pr.id !== id) } : w));
+                                        }}
+                                      />
                                     </div>
                                   </div>
 
@@ -601,11 +597,11 @@ export default function Dashboard() {
                                           <Button
                                             variant="outline"
                                             size="sm"
-                                            className={`w-full h-8 text-xs font-medium border-gray-200 dark:border-zinc-700 hover:bg-white dark:hover:bg-zinc-800 transition-colors ${proxy.status === 'STOPPED' ? 'text-green-600 dark:text-green-400 hover:text-green-700' : 'text-orange-600 dark:text-orange-400 hover:text-orange-700'}`}
-                                            onClick={() => modem && sendCommand(worker.id, modem.id, proxy.status === 'STOPPED' ? 'START_PROXY' : 'STOP_PROXY', { proxyPort: proxy.port })}
+                                            className={`w-full h-8 text-xs font-medium border-gray-200 dark:border-zinc-700 hover:bg-white dark:hover:bg-zinc-800 transition-colors ${!isProxyRunning ? 'text-green-600 dark:text-green-400 hover:text-green-700' : 'text-orange-600 dark:text-orange-400 hover:text-orange-700'}`}
+                                            onClick={() => modem && sendCommand(worker.id, modem.id, !isProxyRunning ? 'START_PROXY' : 'STOP_PROXY', { id: proxy.id, proxyPort: proxy.port })}
                                             disabled={!modem}
                                           >
-                                            {proxy.status === 'STOPPED' ? (
+                                            {!isProxyRunning ? (
                                               <>
                                                 <Play className="w-3 h-3 mr-1.5" />
                                                 Start
@@ -619,7 +615,7 @@ export default function Dashboard() {
                                           </Button>
                                         </TooltipTrigger>
                                         <TooltipContent>
-                                          <p>{proxy.status === 'STOPPED' ? 'Start Proxy' : 'Stop Proxy'}</p>
+                                          <p>{!isProxyRunning ? 'Start Proxy' : 'Stop Proxy'}</p>
                                         </TooltipContent>
                                       </Tooltip>
                                     </div>

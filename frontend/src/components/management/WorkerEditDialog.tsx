@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Edit3 } from "lucide-react";
+import { Edit3, Trash2 } from "lucide-react";
 
 interface Props {
     workerId: string;
@@ -19,9 +19,10 @@ interface Props {
     currentIp: string;
     currentPort: number;
     onUpdated: (w: { id: string; name: string; ip: string; port: number }) => void;
+    onDelete?: () => Promise<void>;
 }
 
-export function WorkerEditDialog({ workerId, currentName, currentIp, currentPort, onUpdated }: Props) {
+export function WorkerEditDialog({ workerId, currentName, currentIp, currentPort, onUpdated, onDelete }: Props) {
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [form, setForm] = useState({ name: currentName, ip: currentIp, port: String(currentPort) });
@@ -107,9 +108,24 @@ export function WorkerEditDialog({ workerId, currentName, currentIp, currentPort
                     </div>
                     {error && <p className="text-sm text-red-500">{error}</p>}
                 </div>
-                <DialogFooter>
-                    <Button variant="secondary" onClick={() => setOpen(false)}>Annuler</Button>
-                    <Button onClick={handleSubmit} disabled={loading}>{loading ? "Enregistrement..." : "Enregistrer"}</Button>
+                <DialogFooter className="flex justify-between sm:justify-between">
+                    <Button variant="destructive" onClick={async () => {
+                        if (!confirm("Are you sure you want to delete this worker? This action cannot be undone.")) return;
+                        // Assuming the parent component passes a delete handler or we call API directly.
+                        // But the requirements said "Move it", meaning the logic from page.tsx should probably be here or triggered here.
+                        // Let's add an onDelete prop to be safe and clean.
+                        if (onDelete) {
+                            await onDelete();
+                            setOpen(false);
+                        }
+                    }}>
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete Worker
+                    </Button>
+                    <div className="flex gap-2">
+                        <Button variant="secondary" onClick={() => setOpen(false)}>Annuler</Button>
+                        <Button onClick={handleSubmit} disabled={loading}>{loading ? "Enregistrement..." : "Enregistrer"}</Button>
+                    </div>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

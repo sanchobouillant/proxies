@@ -653,6 +653,45 @@ app.prepare().then(async () => {
         if (role === 'dashboard') {
             socket.join('dashboard');
             console.log(`[Server] Socket ${socket.id} joined 'dashboard' room.`);
+
+            socket.on('ui_command', async (payload: any) => {
+                const { workerId, modemId, command, data } = payload;
+                console.log(`[Server] Received UI command: ${command} for worker ${workerId}`);
+
+                // Intercept START/STOP to update DB state for persistence
+                if (command === 'START_PROXY' && data?.id) {
+                    try {
+                        await prisma.proxy.update({
+                            where: { id: data.id },
+                            data: { status: 'ACTIVE' }
+                        });
+                        console.log(`[Server] Set proxy ${data.id} to ACTIVE`);
+                    } catch (e) {
+                        console.error(`[Server] Failed to update proxy status to ACTIVE:`, e);
+                    }
+                } else if (command === 'STOP_PROXY' && data?.id) { // Stop by ID if available, or finding by port logic if needed
+                    try {
+                        await prisma.proxy.update({
+                            where: { id: data.id },
+                            data: { status: 'STOPPED' }
+                        });
+                        console.log(`[Server] Set proxy ${data.id} to STOPPED`);
+                    } catch (e) {
+                        // Fallback: If data.id is missing but we have port?
+                        // Ideally frontend always sends ID now.
+                        console.error(`[Server] Failed to update proxy status to STOPPED:`, e);
+                    }
+                }
+
+                // Initial implementation didn't have ui_command handler in server.ts
+                // so the buttons were doing nothing but local optimistic UI maybe?
+                // Now we forward to worker manager.
+                const success = workerManager.sendCommand(workerId, command, modemId, data);
+                if (!success) {
+                    // Optional: emit back error to dashboard?
+                    // socket.emit('error', 'Failed to send command to worker');
+                }
+            });
         }
     });
 

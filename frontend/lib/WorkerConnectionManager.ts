@@ -48,6 +48,9 @@ export class WorkerConnectionManager {
 
         socket.on('connect', () => {
             console.log(`[Manager] Connected to Worker ${worker.name} (${worker.id})`);
+            // Ensure secret is ready for handshake
+            this.workerSecrets.set(worker.id, worker.apiKey);
+
             this.updateWorkerStatus(worker.id, 'ONLINE');
             this.syncProxies(worker.id).catch(err => console.error(`[Manager] Failed to sync proxies for ${worker.id}:`, err));
 
