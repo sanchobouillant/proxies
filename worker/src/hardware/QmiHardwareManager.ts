@@ -309,13 +309,28 @@ export class QmiHardwareManager implements HardwareManager {
         try {
             const status = await this.executeQmi(`qmicli -d ${devicePath} --wds-get-packet-service-status`, 2000);
             if (status.includes('Connection status: \'connected\'')) {
-                // Already connected. Ensure we have IP on the interface?
-                // But fast check implies good.
-                this.debug(`[QmiHardware] Modem ${modem.id} is already connected (WDS status confirms).`);
-                return true;
+                // Already connected. Check if we actually have an IP on the interface
+                const interfaceName = await this.getWwanInterface(devicePath);
+                if (interfaceName) {
+                    const hasIp = await this.hasIpAddress(interfaceName);
+                    if (hasIp) {
+                        this.debug(`[QmiHardware] Modem ${modem.id} is already connected (WDS status) AND has IP.`);
+
+                        // Update interface name if needed (important for proxy)
+                        if (interfaceName !== modem.interfaceName) {
+                            modem.interfaceName = interfaceName;
+                            (modem as any).interfaceName = interfaceName;
+                        }
+                        return true;
+                    }
+                    console.warn(`[QmiHardware] Modem ${modem.id} reports WDS connected, but interface ${interfaceName} has NO IP. Forcing reconfiguration.`);
+                } else {
+                    console.warn(`[QmiHardware] Modem ${modem.id} connected, but cannot find interface. Forcing reconfiguration.`);
+                }
+                // If we are here, we proceed to DHCP/Manual setup below to fix the missing IP
             }
 
-            this.debug(`[QmiHardware] Modem ${modem.id} is ONLINE but Disconnected. Attempting data connection (APN: ${apn})...`);
+            this.debug(`[QmiHardware] Modem ${modem.id} is ONLINE but Disconnected (or missing IP). Attempting data connection (APN: ${apn})...`);
 
             // 1. Find Network Interface
             let interfaceName = await this.getWwanInterface(devicePath);
@@ -424,6 +439,15 @@ export class QmiHardwareManager implements HardwareManager {
             // In some environments, we might need to look at sysfs.
             // But let's trust QMI first.
             return null;
+        }
+    }
+
+    private async hasIpAddress(iface: string): Promise<boolean> {
+        try {
+            const { stdout } = await execAsync(`ip -4 addr show ${iface}`);
+            return stdout.includes('inet ');
+        } catch (e) {
+            return false;
         }
     }
 }
