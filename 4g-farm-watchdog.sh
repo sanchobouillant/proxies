@@ -287,11 +287,15 @@ program_pair() {
           fi
        fi
     else
-       perlog "$tag" "[WARN] Impossible de lire le format de données wda. On tente raw-ip par défaut."
-       # Fallback: on tente de forcer raw-ip comme avant
+       perlog "$tag" "[WARN] Impossible de lire le format de données wda. On force raw-ip (Kernel + Modem)."
+       # Fallback strategy: On parie sur Raw-IP (le plus commun sur SIM7600 récent)
        if [[ -n "$ifc" ]]; then
           ip link set "$ifc" down >/dev/null 2>&1 || true
+          # FORCE KERNEL RAW-IP 'Y'
+          echo 'Y' > "/sys/class/net/$ifc/qmi/raw_ip" 2>/dev/null || perlog "$tag" "[WARN] Echec écriture raw_ip=Y (Fallback)"
+          ip link set "$ifc" up >/dev/null 2>&1 || true
        fi
+       # Et on essaie de le dire au modem aussi (best effort)
        qmicli -d "$dev" --device-open-proxy --wda-set-data-format=raw-ip >/dev/null 2>&1 || true
     fi
 
