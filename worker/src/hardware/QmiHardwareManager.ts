@@ -292,31 +292,56 @@ export class QmiHardwareManager implements HardwareManager {
         return Array.from(this.modems.values());
     }
 
+    private async configureDataFormat(devicePath: string, interfaceName: string): Promise<void> {
+        let mode = 'raw-ip'; // default assumption
+        try {
+            const format = await this.executeQmi(`qmicli -d ${devicePath} --device-open-proxy --wda-get-data-format`, 3000);
+            if (format.includes('802-3')) mode = '802-3';
+        } catch (e) {
+            console.warn(`[QmiHardware] Failed to read data format for ${devicePath}, defaulting to raw-ip fallback.`);
+            // If read fails, we try to force raw-ip on modem side (best effort)
+            try { await this.executeQmi(`qmicli -d ${devicePath} --device-open-proxy --wda-set-data-format=raw-ip`, 3000); } catch (_) { }
+        }
+
+        console.log(`[QmiHardware] Configuring ${interfaceName} for ${mode} mode...`);
+
+        // Sync Kernel (sysfs)
+        const sysPath = `/sys/class/net/${interfaceName}/qmi/raw_ip`;
+        try {
+            if (mode === 'raw-ip') {
+                await execAsync(`ip link set ${interfaceName} down`);
+                await execAsync(`echo 'Y' > ${sysPath}`).catch(() => { /* loose fail? */ });
+                await execAsync(`ip link set ${interfaceName} up`);
+            } else {
+                await execAsync(`ip link set ${interfaceName} down`);
+                await execAsync(`echo 'N' > ${sysPath}`).catch(() => { });
+                await execAsync(`ip link set ${interfaceName} up`);
+            }
+        } catch (e: any) {
+            console.warn(`[QmiHardware] Error syncing raw_ip sysfs: ${e.message}`);
+        }
+    }
+
     async connectModem(modem: Modem, config?: { apn?: string, user?: string, pass?: string, pin?: string }): Promise<boolean> {
         const devicePath = (modem as any).devicePath;
-        const apn = config?.apn || 'free'; // Default fallback or error?
+        const apn = config?.apn || 'free';
 
-        // Check SIM status before connecting
         const info = await this.getModemInfo(devicePath);
 
         if (info.simStatus === 'LOCKED') {
-            console.log(`[QmiHardware] connecting modem ${modem.id}, but SIM is locked.`); // We expect UNLOCK command first or Auto-unlock
+            console.log(`[QmiHardware] connecting modem ${modem.id}, but SIM is locked.`);
             return false;
         }
 
-        // Only try connecting if status is "Online" (SIM ready) but maybe not "Connected" data-wise
-        // We need to check WDS status
         try {
-            const status = await this.executeQmi(`qmicli -d ${devicePath} --wds-get-packet-service-status`, 2000);
+            // Use --device-open-proxy to avoid stealing ownership from watchdog
+            const status = await this.executeQmi(`qmicli -d ${devicePath} --device-open-proxy --wds-get-packet-service-status`, 2000);
             if (status.includes('Connection status: \'connected\'')) {
-                // Already connected. Check if we actually have an IP on the interface
                 const interfaceName = await this.getWwanInterface(devicePath);
                 if (interfaceName) {
                     const hasIp = await this.hasIpAddress(interfaceName);
                     if (hasIp) {
                         this.debug(`[QmiHardware] Modem ${modem.id} is already connected (WDS status) AND has IP.`);
-
-                        // Update interface name if needed (important for proxy)
                         if (interfaceName !== modem.interfaceName) {
                             modem.interfaceName = interfaceName;
                             (modem as any).interfaceName = interfaceName;
@@ -327,7 +352,6 @@ export class QmiHardwareManager implements HardwareManager {
                 } else {
                     console.warn(`[QmiHardware] Modem ${modem.id} connected, but cannot find interface. Forcing reconfiguration.`);
                 }
-                // If we are here, we proceed to DHCP/Manual setup below to fix the missing IP
             }
 
             this.debug(`[QmiHardware] Modem ${modem.id} is ONLINE but Disconnected (or missing IP). Attempting data connection (APN: ${apn})...`);
@@ -335,16 +359,28 @@ export class QmiHardwareManager implements HardwareManager {
             // 1. Find Network Interface
             let interfaceName = await this.getWwanInterface(devicePath);
             if (!interfaceName) {
+                // Try sysfs fallback if QMI fails
+                try {
+                    const { stdout } = await execAsync(`ls /sys/class/net/ | grep -E 'wwan|wwu' | head -n 1`);
+                    interfaceName = stdout.trim();
+                } catch (e) { }
+            }
+
+            if (!interfaceName) {
                 console.error(`[QmiHardware] Could not determine network interface for ${devicePath}. Aborting connection.`);
                 return false;
             }
             console.log(`[QmiHardware] Found network interface: ${interfaceName}`);
 
-            // 2. Bring Interface UP
+            // 2. Configure Data Format (Raw-IP vs Ethernet)
+            await this.configureDataFormat(devicePath, interfaceName);
+
+            // 3. Bring Interface UP
             await execAsync(`ip link set ${interfaceName} up`);
 
-            // 3. Start Network (QMI)
-            let cmd = `qmicli -d ${devicePath} --wds-start-network="apn='${apn}',ip-type=4" --client-no-release-cid`;
+            // 4. Start Network (QMI)
+            // Use --device-open-proxy to share with watchdog
+            let cmd = `qmicli -d ${devicePath} --device-open-proxy --wds-start-network="apn='${apn}',ip-type=4" --client-no-release-cid`;
             if (config?.user) cmd += ` --auth-user '${config.user}'`;
             if (config?.pass) cmd += ` --auth-password '${config.pass}'`;
 
@@ -352,56 +388,44 @@ export class QmiHardwareManager implements HardwareManager {
 
             console.log(`[QmiHardware] Network started. Requesting IP via DHCP for ${interfaceName}...`);
 
-            // Attempt 1: udhcpc
+            // DHCP logic...
             try {
+                // Ensure rp_filter is loose for asymmetric routing if needed
+                await execAsync(`sysctl -w net.ipv4.conf.${interfaceName}.rp_filter=2`).catch(() => { });
+
                 await execAsync(`udhcpc -q -n -i ${interfaceName}`);
                 console.log(`[QmiHardware] DHCP (udhcpc) successful.`);
             } catch (errUdhcpc: any) {
-                console.warn(`[QmiHardware] udhcpc failed: ${errUdhcpc.message}`); // Log why it failed (timeout, exit code, etc)
-
-                // Attempt 2: dhclient
+                console.warn(`[QmiHardware] udhcpc failed: ${errUdhcpc.message}`);
                 try {
                     await execAsync(`dhclient ${interfaceName}`);
                     console.log(`[QmiHardware] DHCP (dhclient) successful.`);
                 } catch (errDhclient: any) {
                     console.warn(`[QmiHardware] dhclient failed: ${errDhclient.message}`);
-
-                    // Attempt 3: dhcpcd
                     try {
                         await execAsync(`dhcpcd -4 -1 ${interfaceName}`);
                         console.log(`[QmiHardware] DHCP (dhcpcd) successful.`);
                     } catch (errDhcpcd: any) {
                         console.warn(`[QmiHardware] dhcpcd failed: ${errDhcpcd.message}`);
-
                         console.warn(`[QmiHardware] All DHCP clients failed. Attempting manual IP retrieval via QMI...`);
 
-                        // Last resort: Get IP from QMI and set manually
                         try {
-                            const settings = await this.executeQmi(`qmicli -d ${devicePath} --wds-get-current-settings`, 2000);
+                            const settings = await this.executeQmi(`qmicli -d ${devicePath} --device-open-proxy --wds-get-current-settings`, 2000);
 
-                            // Parse IP: IPv4 address: 10.74.164.218
                             const ipMatch = settings.match(/IPv4 address: ([0-9.]+)/);
-
                             if (ipMatch) {
                                 const ip = ipMatch[1];
                                 console.log(`[QmiHardware] Manual IP config: ${ip} on ${interfaceName}`);
 
-                                // Flush old IPs first to be clean
                                 try { await execAsync(`ip addr flush dev ${interfaceName}`); } catch (e) { }
-
                                 await execAsync(`ip addr add ${ip}/32 dev ${interfaceName}`);
                                 await execAsync(`ip link set ${interfaceName} up`);
 
-                                // Gateway address: 10.74.164.217
                                 const gwMatch = settings.match(/IPv4 gateway address: ([0-9.]+)/);
                                 if (gwMatch) {
-                                    // Check if default route exists? Or just add with high metric to be safe
-                                    // We usually want this interface to be used for specific routing (PBR) managed by LinuxProxyManager
-                                    // But LinuxProxyManager expects the interface to have a gateway or at least be usable.
-                                    // We add a route just for the interface reachability.
                                     try {
                                         await execAsync(`ip route add default via ${gwMatch[1]} dev ${interfaceName} metric 200`);
-                                    } catch (e) { /* Ignore if route exists */ }
+                                    } catch (e) { }
                                 }
                             } else {
                                 throw new Error('Could not parse IP from QMI settings');
