@@ -23,7 +23,7 @@ declare -a QMI_DEVS=()
 N=0
 
 ### LOGGING ###
-log()   { echo "[$(date '+%F %T')] $*" | tee -a "$LOG"; }
+log()   { echo "[$(date '+%F %T')] $*" | tee -a "$LOG" >&2; }
 perlog(){ local tag="$1"; shift; log "[$tag] $*"; }
 
 ### ERROR HANDLING ###
@@ -315,8 +315,14 @@ program_pair() {
     # 2. Start Network (Direct QMI)
     perlog "$tag" "Start Network (qmicli)..."
     
-    # Ensure raw-ip (Ignore busy error)
-    safe_qmicli -d "$dev" --device-open-proxy --wda-set-data-format=raw-ip >/dev/null 2>&1 || true
+    # Ensure raw-ip (Log output for debug)
+    local raw_out
+    if ! raw_out=$(safe_qmicli -d "$dev" --device-open-proxy --wda-set-data-format=raw-ip 2>&1); then
+        # Ignore "Device or resource busy" which happens if interface is already up/configured
+        if [[ "$raw_out" != *"busy"* ]]; then
+             perlog "$tag" "[WARN] Failed to set raw-ip: $raw_out"
+        fi
+    fi
 
     # Start WDS Network
     local qmi_out
@@ -342,13 +348,25 @@ program_pair() {
     ip link set "$ifc" up
     sysctl -w "net.ipv4.conf.${ifc}.rp_filter=2" >/dev/null || true
 
-    # 3. DHCP (Aggressive)
-    perlog "$tag" "DHCP Request..."
-    # safe_udhcpc logs error automatically now
+    # 3. DHCP (Aggressive + Fallback)
+    perlog "$tag" "DHCP Request (First attempt: udhcpc)..."
+    # safe_udhcpc logs error to stderr now
     if ! safe_udhcpc -i "$ifc" -q -n -t 5 -T 2 >/dev/null; then
-       perlog "$tag" "DHCP Failed -> Retry Loop"
-       sleep 2
-       continue 
+       perlog "$tag" "udhcpc failed. Trying dhclient fallback..."
+       
+       # Fallback dhclient
+       if command -v dhclient >/dev/null; then
+           timeout 15s dhclient -v "$ifc" || perlog "$tag" "dhclient failed too."
+       else
+           perlog "$tag" "dhclient not installed."
+       fi
+       
+       # Check if we got IP despite errors (dhclient return codes can be tricky)
+       if ! ip -4 addr show dev "$ifc" | grep -q "inet "; then
+           perlog "$tag" "DHCP Failed (All methods) -> Retry Loop"
+           sleep 2
+           continue
+       fi
     fi
 
     # 4. Routing
