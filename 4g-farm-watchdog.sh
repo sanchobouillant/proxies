@@ -98,6 +98,10 @@ wait_registered() {
     fi
     if (( i % 10 == 0 )); then
       perlog "${dev##*/}" "Attente registration… ($i/$tries)"
+      # Log du status court (ex: 'searching', 'denied')
+      local status
+      status=$(echo "$S" | grep "Registration state" | xargs)
+      perlog "${dev##*/}" "Status: $status"
     fi
     sleep 2
   done
@@ -285,7 +289,7 @@ program_pair() {
 
     # DHCP initial
     perlog "$tag" "DHCP sur $ifc (udhcpc)"
-    if ! udhcpc -i "$ifc" -q -n -t 8 -T 3 >/dev/null 2>&1; then
+    if ! udhcpc -i "$ifc" -q -n -t 8 -T 3; then
       perlog "$tag" "DHCP FAILED sur $ifc → restart QMI"
       sleep 3
       continue
@@ -311,7 +315,7 @@ program_pair() {
       perlog "$tag" "health BAD → tentative de réparation"
 
       # 1) DHCP renew
-      if udhcpc -i "$ifc" -q -n -t 3 -T 3 >/dev/null 2>&1; then
+      if udhcpc -i "$ifc" -q -n -t 3 -T 3; then
         perlog "$tag" "DHCP renew OK sur $ifc"
         ensure_routing "$tag" "$br" "$ifc" "$table" || true
         continue
