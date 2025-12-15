@@ -496,8 +496,8 @@ export default function Dashboard() {
                                         </div>
                                         <div>
                                           <div className="text-xs font-medium text-gray-500 dark:text-gray-400">Proxy Address</div>
-                                          <div className="font-mono text-xs select-all text-gray-900 dark:text-gray-100 font-medium">
-                                            socks5://{proxy.authUser && proxy.authPass ? `${proxy.authUser}:${proxy.authPass}@` : ''}{balancerIp || (typeof window !== 'undefined' ? window.location.hostname : 'localhost')}:{proxy.port}
+                                          <div className="font-mono text-xs select-all text-gray-900 dark:text-gray-100 font-medium break-all">
+                                            socks5://{balancerIp || (typeof window !== 'undefined' ? window.location.hostname : 'localhost')}:{proxy.port}
                                           </div>
                                         </div>
 
