@@ -25,6 +25,31 @@ N=0
 log()   { echo "[$(date '+%F %T')] $*" | tee -a "$LOG" >&2; }
 perlog(){ local tag="$1"; shift; log "[$tag] $*"; }
 
+### DIAGNOSTIC ELECTRIQUE ###
+check_power() {
+  local tag="${1:-Global}"
+  
+  # 1. Raspberry Pi Under-voltage check
+  if command -v vcgencmd >/dev/null 2>&1; then
+    local throttled
+    throttled=$(vcgencmd get_throttled 2>/dev/null)
+    if [[ "$throttled" != "throttled=0x0" ]]; then
+       perlog "$tag" "[ALERT ELECTRIQUE] vcgencmd report: $throttled. Sous-tension détectée !"
+    fi
+  fi
+
+  # 2. Kernel Messages (Last 10 lines containing Voltage or USB disconnect)
+  # On cherche des indices récents
+  local kern_errs
+  kern_errs=$(dmesg | tail -n 50 | grep -iE "voltage|current|over-current|disconnect" || true)
+  if [[ -n "$kern_errs" ]]; then
+     perlog "$tag" "[DIAGNOSTIC KERNEL] Indices électriques récents :"
+     echo "$kern_errs" | while read -r line; do
+        perlog "$tag" "  > $line"
+     done
+  fi
+}
+
 ### PRÉREQUIS ###
 ensure_prereqs() {
   touch "$LOG" || true
@@ -130,6 +155,7 @@ usb_cycle() {
   SYS=$(udevadm info -q path -n "$dev" 2>/dev/null || true)
   if [[ -z "$SYS" ]]; then
     perlog "$tag" "usb_cycle: sysfs introuvable pour $dev"
+    check_power "$tag"
     return 1
   fi
 
@@ -350,6 +376,13 @@ program_pair() {
       fi
 
       perlog "$tag" "health BAD → tentative de réparation"
+      
+      # 0) Vérifier si le device physique est toujours là
+      if [[ ! -e "$dev" ]]; then
+         perlog "$tag" "Device $dev a disparu ! Fin de la boucle -> Restart"
+         check_power "$tag"
+         break
+      fi
 
       # 1) DHCP renew
       if udhcpc -i "$ifc" -q -n -t 3 -T 3; then
