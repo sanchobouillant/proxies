@@ -132,18 +132,55 @@ wait_registered() {
   return 1
 }
 
+### TROUVER PORTS AT ASSOCIÉS ###
+find_at_ports() {
+  local dev="$1"
+  local SYS
+  SYS=$(udevadm info -q path -n "$dev" 2>/dev/null || true)
+  [[ -z "$SYS" ]] && return 1
+
+  # Remonter au parent USB device (qui contient toutes les interfaces : cdc-wdm, ttyUSB...)
+  # ex: /sys/.../1-1.2:1.5/usbmisc/cdc-wdm0  -> parent -> 1-1.2:1.5 -> parent -> 1-1.2
+  local P
+  P="$(dirname "$SYS")"
+  P="$(dirname "$P")"
+  P="$(dirname "$P")"
+  
+  # Chercher les ttyUSB sous ce parent
+  local ports
+  ports=$(find "/sys$P" -name "ttyUSB*" 2>/dev/null || true)
+  
+  # Retourner les /dev/ttyUSBx correspondants
+  for p in $ports; do
+    echo "/dev/$(basename "$p")"
+  done
+}
+
 ### RESET AT (CFUN=1,1) ###
 soft_reset() {
-  local tag="$1"
-  for AT in /dev/ttyUSB2 /dev/ttyUSB0; do
+  local tag="$1" dev="$2"
+  
+  local at_ports
+  at_ports=$(find_at_ports "$dev")
+  
+  if [[ -z "$at_ports" ]]; then
+     perlog "$tag" "Aucun port AT trouvé lié à $dev (sysfs)"
+     return 1
+  fi
+
+  # On teste les ports trouvés (souvent le 2ème ou 3ème interface, mais on les tente tous)
+  for AT in $at_ports; do
     if [[ -e "$AT" ]]; then
-      perlog "$tag" "Soft reset via $AT (AT+CFUN=1,1)"
-      { printf 'AT\r\nATI\r\nAT+CFUN=1,1\r\n' >"$AT"; } || true
-      sleep 15
-      return 0
+       # check rapide si ça répond (timeout 1s)
+       # C'est optionnel, on peut juste envoyer CFUN blindement
+       perlog "$tag" "Tentative Soft Reset sur $AT (spécifique modem)"
+       { printf 'AT\r\nATI\r\nAT+CFUN=1,1\r\n' >"$AT"; } || true
+       sleep 15
+       return 0
     fi
   done
-  perlog "$tag" "Aucun port AT trouvé pour soft reset"
+
+  perlog "$tag" "Echec Soft Reset (aucun port AT valide testé)"
   return 1
 }
 
@@ -273,7 +310,7 @@ program_pair() {
     if ! wait_registered "$dev" 60; then
       perlog "$tag" "registration timeout → soft reset"
       set -e
-      soft_reset "$tag"
+      soft_reset "$tag" "$dev"
       sleep 8
       set +e
       if ! wait_registered "$dev" 60; then
@@ -430,7 +467,7 @@ program_pair() {
 
       # 3) Soft reset + usb cycle
       perlog "$tag" "Soft reset + USB cycle"
-      soft_reset "$tag" || true
+      soft_reset "$tag" "$dev" || true
       sleep 10
       if ! ping -c1 -W3 -I "$ifc" "$PING_DST" >/dev/null 2>&1; then
         usb_cycle "$tag" "$dev" || true
