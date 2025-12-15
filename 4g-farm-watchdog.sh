@@ -43,21 +43,14 @@ ensure_prereqs() {
   sysctl -w net.ipv4.ip_forward=1 >/dev/null || true
   
   # Ensure tools exist
-  for cmd in qmicli qmi-network udhcpc ip timeout; do
+  for cmd in qmicli udhcpc ip timeout; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
       log "ERREUR CRITIQUE: Commande '$cmd' introuvable."
       exit 1
     fi
   done
-
-  # qmi-network config
-  mkdir -p /etc
-  cat >/etc/qmi-network.conf <<EOF
-APN=${APN}
-IP_TYPE=4
-qmi-proxy=yes
-PROFILE=1
-EOF
+  
+  # qmi-network removed.
 
   # Disable ModemManager (Avoid conflicts)
   if systemctl is-active --quiet ModemManager.service; then
@@ -303,11 +296,12 @@ program_pair() {
     wait_for_device "$dev" "$tag"
     qmi_proxy_up "$dev"
 
-    # Cleanup Previous State
-    qmi-network "$dev" stop >/dev/null 2>&1 || true
-    rm -f "/tmp/qmi-network-state-${dev##*/}"
+    perlog "$tag" "Nettoyage session QMI précédente"
+    # Stop any previous wds session best effort
+    safe_qmicli -d "$dev" --device-open-proxy --wds-stop-network=2222222 >/dev/null 2>&1 || true # Invalid handle force cleanup? Not really possible without CID.
+    # Just rely on reset if needed.
     
-    # 1. Bring Up QMI
+    # Online + LTE
     perlog "$tag" "Setup QMI mode..."
     safe_qmicli -d "$dev" --device-open-proxy --dms-set-operating-mode=online >/dev/null 2>&1 || true
     safe_qmicli -d "$dev" --device-open-proxy --nas-set-system-selection-preference="mode-preference=lte" >/dev/null 2>&1 || true
@@ -318,17 +312,24 @@ program_pair() {
        continue 
     fi
 
-    # 2. Start Network
-    perlog "$tag" "Start Network..."
+    # 2. Start Network (Direct QMI)
+    perlog "$tag" "Start Network (qmicli)..."
+    
+    # Ensure raw-ip (Ignore busy error)
+    safe_qmicli -d "$dev" --device-open-proxy --wda-set-data-format=raw-ip >/dev/null 2>&1 || true
+
+    # Start WDS Network
     local qmi_out
-    if ! qmi_out=$(timeout "$CMD_TIMEOUT" qmi-network "$dev" start 2>&1); then
+    # We use --client-no-release-cid to keep connection alive after command exits
+    if ! qmi_out=$(safe_qmicli -d "$dev" --device-open-proxy --wds-start-network="apn='${APN}',ip-type=4" --client-no-release-cid 2>&1); then
        perlog "$tag" "Start Failed -> Retry in 5s"
        perlog "$tag" "Error Details: $qmi_out"
        sleep 5
        continue
     fi
+    perlog "$tag" "Network Started (WDS)"
     
-    sleep 3
+    sleep 2
     local ifc
     ifc=$(find_iface_for_dev "$dev")
     if [[ -z "$ifc" ]]; then
