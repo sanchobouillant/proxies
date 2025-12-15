@@ -258,12 +258,23 @@ program_pair() {
       fi
     fi
 
-    perlog "$tag" "qmi start (direct wds)"
-    # REMPLACÉ: qmi-network "$dev" start
-    # RAISON: qmi-network ne gère pas le mode proxy (--device-open-proxy) et échoue si qmi-proxy tourne.
+    # Laisser le temps au noyau de créer l'interface si pas deja la
+    local ifc
+    ifc=$(find_iface_for_dev "$dev" || true)
     
-    # 1. Config Raw-IP (Best effort)
-    qmicli -d "$dev" --device-open-proxy --wda-set-data-format=raw-ip >/dev/null 2>&1 || true
+    perlog "$tag" "qmi start (direct wds)"
+    
+    # 0. Ensure Interface is DOWN to allow Raw-IP change
+    if [[ -n "$ifc" ]]; then
+       ip link set "$ifc" down >/dev/null 2>&1 || true
+    fi
+
+    # 1. Config Raw-IP (Best effort, but now kernel should accept it)
+    # On loggue l'erreur si ça fail pour debug
+    local raw_log
+    if ! raw_log=$(qmicli -d "$dev" --device-open-proxy --wda-set-data-format=raw-ip 2>&1); then
+         perlog "$tag" "[WARN] Raw-IP Set Failed: $raw_log"
+    fi
 
     # 2. Start Network
     if ! qmicli -d "$dev" --device-open-proxy --wds-start-network="apn='${APN}',ip-type=4" --client-no-release-cid >/dev/null 2>&1; then
@@ -271,12 +282,13 @@ program_pair() {
       sleep 3
       continue
     fi
+    
+    # Re-verify interface
+    sleep 2
+    if [[ -z "$ifc" ]]; then
+        ifc=$(find_iface_for_dev "$dev" || true)
+    fi
 
-    # Laisser le temps au noyau de créer l'interface
-    sleep 4
-
-    local ifc
-    ifc=$(find_iface_for_dev "$dev" || true)
     perlog "$tag" "IFC détectée via sysfs: $ifc"
     if [[ -z "$ifc" ]]; then
       perlog "$tag" "Aucune interface wwu*/wwan* trouvée → retry"
@@ -290,7 +302,9 @@ program_pair() {
     # DHCP initial
     perlog "$tag" "DHCP sur $ifc (udhcpc)"
     if ! udhcpc -i "$ifc" -q -n -t 8 -T 3; then
-      perlog "$tag" "DHCP FAILED sur $ifc → restart QMI"
+      perlog "$tag" "DHCP FAILED sur $ifc → retry"
+      # Si DHCP fail, ça peut être le raw-ip qui est mal passé.
+      # On va retry la boucle, donc ça refera un down/up
       sleep 3
       continue
     fi
