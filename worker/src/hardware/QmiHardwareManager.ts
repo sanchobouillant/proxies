@@ -421,6 +421,18 @@ export class QmiHardwareManager implements HardwareManager {
                 (modem as any).interfaceName = interfaceName;
             }
 
+            // Fetch and set IP address
+            try {
+                const { stdout: ipOut } = await execAsync(`ip -4 addr show ${interfaceName}`);
+                const ipMatch = ipOut.match(/inet ([0-9.]+)/);
+                if (ipMatch) {
+                    (modem as any).ipAddress = ipMatch[1];
+                    console.log(`[QmiHardware] IP updated for ${modem.id}: ${ipMatch[1]}`);
+                }
+            } catch (e) {
+                console.warn(`[QmiHardware] Failed to read IP for ${interfaceName}`);
+            }
+
             return true;
 
         } catch (e: any) {
