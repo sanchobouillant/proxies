@@ -363,7 +363,7 @@ app.prepare().then(async () => {
             if (req.method === 'POST' && pathname === '/api/control/proxy') {
                 const body = await getBody(req);
                 // We accept 'modemInterface' for legacy compatibility or 'modemId'
-                const { name, port, authUser, authPass, modemInterface, modemId, workerId, protocol } = body;
+                const { name, port, authUser, authPass, modemInterface, modemId, workerId, protocol, apn } = body;
 
                 const finalModemId = modemId || modemInterface;
 
@@ -378,7 +378,8 @@ app.prepare().then(async () => {
                             authPass,
                             modemId: finalModemId,
                             workerId,
-                            protocol: protocol || 'SOCKS5'
+                            protocol: protocol || 'SOCKS5',
+                            apn: apn || null
                         }
                     });
 
@@ -390,13 +391,13 @@ app.prepare().then(async () => {
                     }
 
                     // 3. Notify Worker
-                    // 3. Notify Worker
                     workerManager.sendCommand(workerId, 'START_PROXY', finalModemId, {
                         id: proxy.id,
                         proxyPort: pPort,
                         user: authUser,
                         pass: authPass,
-                        protocol: protocol || 'SOCKS5'
+                        protocol: protocol || 'SOCKS5',
+                        apn: apn || undefined
                     });
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify(proxy));
@@ -412,7 +413,7 @@ app.prepare().then(async () => {
                 const parts = pathname.split('/');
                 const id = parts[4];
                 const body = await getBody(req);
-                const { name, port, authUser, authPass, modemId, workerId, protocol } = body;
+                const { name, port, authUser, authPass, modemId, workerId, protocol, apn } = body;
                 try {
                     const existing = await prisma.proxy.findUnique({ where: { id }, include: { worker: true } });
                     if (!existing) { res.writeHead(404).end(JSON.stringify({ error: 'Proxy not found' })); return; }
@@ -431,7 +432,8 @@ app.prepare().then(async () => {
                             authPass,
                             modemId,
                             workerId,
-                            protocol: protocol || existing.protocol
+                            protocol: protocol || existing.protocol,
+                            apn: apn !== undefined ? apn : existing.apn // Only update if provided
                         }
                     });
 
@@ -450,7 +452,8 @@ app.prepare().then(async () => {
                         proxyPort: pPort,
                         user: authUser,
                         pass: authPass,
-                        protocol: protocol || 'SOCKS5'
+                        protocol: protocol || 'SOCKS5',
+                        apn: apn !== undefined ? apn : existing.apn
                     });
 
                     res.writeHead(200, { 'Content-Type': 'application/json' });

@@ -23,7 +23,8 @@ export function AddProxyDialog({ workers, onProxyAdded }: AddProxyDialogProps) {
         port: "30001",
         authUser: "",
         authPass: "",
-        protocol: "SOCKS5" // Added protocol state
+        protocol: "SOCKS5", // Added protocol state
+        apn: ""
     });
 
     const selectedWorker = workers.find(w => w.id === selectedWorkerId);
@@ -73,7 +74,7 @@ export function AddProxyDialog({ workers, onProxyAdded }: AddProxyDialogProps) {
             if (res.ok) {
                 setOpen(false);
                 onProxyAdded?.();
-                setFormData({ name: "", modemInterface: "", port: "30001", authUser: "", authPass: "", protocol: "SOCKS5" });
+                setFormData({ name: "", modemInterface: "", port: "30001", authUser: "", authPass: "", protocol: "SOCKS5", apn: "" });
             } else {
                 setError(data.error || "Failed to create proxy");
             }
@@ -151,6 +152,48 @@ export function AddProxyDialog({ workers, onProxyAdded }: AddProxyDialogProps) {
                                             </div>
                                         );
                                     })}
+                                </div>
+                            </div>
+
+                            <div className="grid md:grid-cols-2 gap-4">
+                                <div className="grid gap-2">
+                                    <Label>Protocol</Label>
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors ${formData.protocol === 'SOCKS5' ? 'bg-blue-50 border-blue-500 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' : 'bg-white dark:bg-zinc-950 border-gray-200 dark:border-zinc-800 hover:bg-gray-50'}`}
+                                            onClick={() => setFormData({ ...formData, protocol: 'SOCKS5' })}
+                                        >
+                                            SOCKS5
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors ${formData.protocol === 'HTTP' ? 'bg-blue-50 border-blue-500 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' : 'bg-white dark:bg-zinc-950 border-gray-200 dark:border-zinc-800 hover:bg-gray-50'}`}
+                                            onClick={() => setFormData({ ...formData, protocol: 'HTTP' })}
+                                        >
+                                            HTTP
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="grid gap-2">
+                                    <Label htmlFor="apn">APN (Access Point Name)</Label>
+                                    <Input
+                                        id="apn"
+                                        value={(formData as any).apn || ''}
+                                        onChange={(e) => setFormData({ ...formData, apn: e.target.value } as any)}
+                                        placeholder="e.g. orange"
+                                    />
+                                    <div className="flex flex-wrap gap-1.5 mt-1">
+                                        {['orange', 'free', 'sl2sfr', 'mmsbouygtel.com', 'internet'].map(apn => (
+                                            <span
+                                                key={apn}
+                                                className="text-[10px] px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900 cursor-pointer hover:border-blue-300 hover:text-blue-600 transition-colors"
+                                                onClick={() => setFormData(prev => ({ ...prev, apn: apn } as any))}
+                                            >
+                                                {apn}
+                                            </span>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
 

@@ -29,7 +29,9 @@ export function ProxyEditDialog({ proxy, worker, onUpdated, onDeleted }: ProxyEd
         port: String(proxy.port),
         authUser: proxy.authUser || "",
         authPass: proxy.authPass || "",
-        modemId: proxy.modemId
+        modemId: proxy.modemId,
+        protocol: proxy.protocol || "SOCKS5",
+        apn: proxy.apn || ""
     });
     const [error, setError] = useState<string | null>(null);
 
@@ -39,7 +41,9 @@ export function ProxyEditDialog({ proxy, worker, onUpdated, onDeleted }: ProxyEd
             port: String(proxy.port),
             authUser: proxy.authUser || "",
             authPass: proxy.authPass || "",
-            modemId: proxy.modemId
+            modemId: proxy.modemId,
+            protocol: proxy.protocol || "SOCKS5",
+            apn: proxy.apn || ""
         });
     }, [proxy]);
 
@@ -62,7 +66,8 @@ export function ProxyEditDialog({ proxy, worker, onUpdated, onDeleted }: ProxyEd
                     authPass: form.authPass || null,
                     modemId: form.modemId,
                     workerId: worker.id,
-                    protocol: proxy.protocol
+                    protocol: form.protocol,
+                    apn: form.apn || null
                 })
             });
             const data = await res.json();
@@ -136,6 +141,47 @@ export function ProxyEditDialog({ proxy, worker, onUpdated, onDeleted }: ProxyEd
                             })}
                         </div>
                     </div>
+                    <div className="grid gap-2">
+                        <Label>Protocol</Label>
+                        <div className="flex gap-2">
+                            <button
+                                type="button"
+                                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors ${form.protocol === 'SOCKS5' ? 'bg-blue-50 border-blue-500 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' : 'bg-white dark:bg-zinc-950 border-gray-200 dark:border-zinc-800 hover:bg-gray-50'}`}
+                                onClick={() => setForm({ ...form, protocol: 'SOCKS5' })}
+                            >
+                                SOCKS5
+                            </button>
+                            <button
+                                type="button"
+                                className={`flex-1 py-2 px-3 rounded-md text-sm font-medium border transition-colors ${form.protocol === 'HTTP' ? 'bg-blue-50 border-blue-500 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' : 'bg-white dark:bg-zinc-950 border-gray-200 dark:border-zinc-800 hover:bg-gray-50'}`}
+                                onClick={() => setForm({ ...form, protocol: 'HTTP' })}
+                            >
+                                HTTP
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="grid gap-2">
+                        <Label htmlFor="apn">APN (Access Point Name)</Label>
+                        <Input
+                            id="apn"
+                            value={form.apn || ''}
+                            onChange={(e) => setForm({ ...form, apn: e.target.value })}
+                            placeholder="e.g. orange"
+                        />
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                            {['orange', 'free', 'sl2sfr', 'mmsbouygtel.com', 'internet'].map(apn => (
+                                <span
+                                    key={apn}
+                                    className="text-[10px] px-1.5 py-0.5 rounded border border-gray-200 dark:border-zinc-800 bg-gray-50 dark:bg-zinc-900 cursor-pointer hover:border-blue-300 hover:text-blue-600 transition-colors"
+                                    onClick={() => setForm({ ...form, apn: apn })}
+                                >
+                                    {apn}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+
                     <div className="grid gap-2 md:grid-cols-2">
                         <div className="grid gap-2">
                             <Label>User</Label>
