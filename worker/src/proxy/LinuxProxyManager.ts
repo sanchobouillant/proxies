@@ -131,15 +131,27 @@ export class LinuxProxyManager implements ProxyManager {
         const cmd = modem.protocol === 'HTTP' ? 'proxy' : 'socks';
 
         // Basic authenticated proxy config
+        let authConfig = `
+            # No Auth
+            auth none
+            allow *
+        `;
+
+        if (modem.user && modem.pass) {
+            authConfig = `
+            # Auth
+            auth strong
+            users ${modem.user}:CL:${modem.pass}
+            allow ${modem.user}
+            `;
+        }
+
         return `
             nscache 65536
             timeouts 1 5 30 60 180 1800 15 60
             daemon
             
-            # Auth
-            auth strong
-            users ${modem.user}:CL:${modem.pass}
-            allow ${modem.user}
+            ${authConfig}
             
             # Binding
             # internal interface (VPN IP usually, or 0.0.0.0 if not strict)
