@@ -50,19 +50,55 @@ export class LinuxProxyManager implements ProxyManager {
         console.log(`[LinuxProxy] Generated config for ${modem.id} at ${configPath}:\n${configContent}`);
         fs.writeFileSync(configPath, configContent);
 
-        // 3. Spawn 3proxy
-        const child = spawn('3proxy', [configPath]);
+        // 3. Resolve 3proxy binary
+        const binaryPath = await this.resolveBinaryPath();
+        if (!binaryPath) {
+            console.error(`[LinuxProxy] CRITICAL: '3proxy' binary not found in PATH or standard locations.`);
+            console.error(`[LinuxProxy] Please install it: 'sudo apt-get install 3proxy'`);
+            return false;
+        }
 
-        child.stdout.on('data', (data) => console.log(`[3proxy ${modem.id}] ${data}`));
-        child.stderr.on('data', (data) => console.error(`[3proxy ${modem.id}] ${data}`));
+        // 4. Spawn 3proxy
+        try {
+            const child = spawn(binaryPath, [configPath]);
 
-        child.on('exit', (code) => {
-            console.log(`[LinuxProxy] 3proxy for ${modem.id} exited with code ${code}`);
-            this.processes.delete(modem.id);
-        });
+            child.stdout.on('data', (data) => console.log(`[3proxy ${modem.id}] ${data}`));
+            child.stderr.on('data', (data) => console.error(`[3proxy ${modem.id}] ${data}`));
 
-        this.processes.set(modem.id, child);
-        return true;
+            child.on('error', (err) => {
+                console.error(`[LinuxProxy] Failed to spawn 3proxy:`, err);
+                this.processes.delete(modem.id);
+            });
+
+            child.on('exit', (code) => {
+                console.log(`[LinuxProxy] 3proxy for ${modem.id} exited with code ${code}`);
+                this.processes.delete(modem.id);
+            });
+
+            this.processes.set(modem.id, child);
+            return true;
+        } catch (err) {
+            console.error(`[LinuxProxy] Unexpected error spawning 3proxy:`, err);
+            return false;
+        }
+    }
+
+    private async resolveBinaryPath(): Promise<string | null> {
+        // 1. Try PATH
+        try {
+            await new Promise((resolve, reject) => {
+                const check = spawn('which', ['3proxy']);
+                check.on('close', (code) => code === 0 ? resolve(true) : reject());
+            });
+            return '3proxy';
+        } catch {
+            // 2. Try common locations
+            const commonPaths = ['/usr/bin/3proxy', '/usr/local/bin/3proxy', '/snap/bin/3proxy'];
+            for (const p of commonPaths) {
+                if (fs.existsSync(p)) return p;
+            }
+        }
+        return null;
     }
 
     async stopProxy(modem: Modem): Promise<boolean> {

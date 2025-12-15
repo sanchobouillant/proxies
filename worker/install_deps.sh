@@ -3,7 +3,12 @@ set -e
 
 echo "Installing system dependencies..."
 apt-get update
-apt-get install -y git build-essential gcc make qmicli libqmi-utils isc-dhcp-client
+apt-get install -y git build-essential gcc make
+
+echo "Checking for optional tools..."
+if ! command -v qmicli &> /dev/null; then
+    echo "WARNING: 'qmicli' not found. You may need to install 'libqmi-utils' manually for 4G modems to work."
+fi
 
 echo "Checking for 3proxy..."
 if ! command -v 3proxy &> /dev/null; then
