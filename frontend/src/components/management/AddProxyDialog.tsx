@@ -61,6 +61,12 @@ export function AddProxyDialog({ workers, onProxyAdded }: AddProxyDialogProps) {
             return;
         }
 
+        const restrictedPorts = [3000, 3001, 8080, 22, 3306, 80, 443];
+        if (restrictedPorts.includes(portNum)) {
+            setError(`Port ${portNum} is reserved for system use. Please choose another.`);
+            return;
+        }
+
         setLoading(true);
         try {
             const res = await fetch("/api/control/proxy", {

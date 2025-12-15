@@ -14,6 +14,19 @@ export class LinuxProxyManager implements ProxyManager {
         this.configDir = path.resolve(process.cwd(), 'configs');
         if (!fs.existsSync(this.configDir)) {
             fs.mkdirSync(this.configDir);
+        } else {
+            // Cleanup stale configs
+            try {
+                const files = fs.readdirSync(this.configDir);
+                for (const file of files) {
+                    if (file.endsWith('.cfg')) {
+                        fs.unlinkSync(path.join(this.configDir, file));
+                    }
+                }
+                console.log(`[LinuxProxy] Cleaned up ${files.length} stale config files.`);
+            } catch (e) {
+                console.warn('[LinuxProxy] Failed to cleanup configs:', e);
+            }
         }
         this.router = new RoutingManager();
     }

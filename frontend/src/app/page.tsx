@@ -9,6 +9,9 @@ import { Button } from "@/components/ui/button";
 import { SignalStrength } from "@/components/proxy/SignalStrength";
 import { UnlockSimDialog } from "@/components/proxy/UnlockSimDialog";
 import { CopyProxyButton } from "@/components/proxy/CopyProxyButton";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { SimUnlockDialog } from '@/components/management/SimUnlockDialog';
+import { TestProxyDialog } from '@/components/management/TestProxyDialog';
 import {
   Server,
   Activity,
@@ -32,7 +35,8 @@ import {
   LogOut,
   ZapOff,
   Globe
-} from "lucide-react"; import { motion, AnimatePresence } from "framer-motion";
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { AddWorkerDialog } from "@/components/management/AddWorkerDialog";
 import Link from "next/link";
 import { AddProxyDialog } from "@/components/management/AddProxyDialog";
@@ -99,6 +103,8 @@ export default function Dashboard() {
   const [viewingLogs, setViewingLogs] = useState<{ id: string, name: string } | null>(null);
   const [viewingWorkerInfo, setViewingWorkerInfo] = useState<UIWorker | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [testProxy, setTestProxy] = useState<any | null>(null);
+  const [unlockSim, setUnlockSim] = useState<{ workerId: string, modemId: string } | null>(null);
   const [balancerIp, setBalancerIp] = useState<string>("");
   const [user, setUser] = useState<{ username: string; email: string; role: string } | null>(null);
 
@@ -499,17 +505,36 @@ export default function Dashboard() {
                                       )}
 
                                       {/* Status Badge */}
-                                      {isDetached ? (
-                                        <div className="w-2 h-2 rounded-full bg-red-400" title="Modem Not Found"></div>
-                                      ) : isProxyRunning ? (
-                                        <div className="flex items-center gap-1.5 px-1.5">
-                                          <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] animate-pulse"></div>
-                                        </div>
-                                      ) : hasInternet ? (
-                                        <div className="w-2 h-2 rounded-full bg-gray-400" title="Stopped"></div>
-                                      ) : (
-                                        <div className="w-2 h-2 rounded-full bg-orange-400" title="Disconnected"></div>
-                                      )}
+                                      {/* Status Badge with Popover */}
+                                      <Popover>
+                                        <PopoverTrigger>
+                                          <div className="cursor-help flex items-center p-1 hover:bg-gray-100 dark:hover:bg-zinc-800 rounded">
+                                            {isDetached ? (
+                                              <div className="w-2 h-2 rounded-full bg-red-400"></div>
+                                            ) : isProxyRunning ? (
+                                              <div className="flex items-center gap-1.5 px-1.5">
+                                                <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)] animate-pulse"></div>
+                                              </div>
+                                            ) : hasInternet ? (
+                                              <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                                            ) : (
+                                              <div className="w-2 h-2 rounded-full bg-orange-400 animate-pulse"></div>
+                                            )}
+                                          </div>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-60 text-xs p-3" align="end">
+                                          <div className="font-semibold mb-1">Status Information</div>
+                                          {isDetached ? (
+                                            <p>Modem not detected. Check USB connection.</p>
+                                          ) : isProxyRunning ? (
+                                            <p className="text-emerald-500">Proxy is ACTIVE and running.</p>
+                                          ) : hasInternet ? (
+                                            <p>Stopped. Ready to start.</p>
+                                          ) : (
+                                            <p className="text-orange-500">Disconnected/No Internet. Check APN, Signal or SIM.</p>
+                                          )}
+                                        </PopoverContent>
+                                      </Popover>
 
                                       {/* Edit Button */}
                                       <div className="pl-1 border-l border-gray-200 dark:border-zinc-700">
@@ -538,7 +563,7 @@ export default function Dashboard() {
                                       <div className="min-w-0 flex-1">
                                         <div className="text-[10px] uppercase text-gray-400 font-semibold tracking-wider mb-0.5">Proxy Address</div>
                                         <div className="font-mono text-[11px] text-gray-700 dark:text-gray-300 break-all leading-tight">
-                                          socks5://{balancerIp || (typeof window !== 'undefined' ? window.location.hostname : 'localhost')}:{proxy.port}
+                                          socks5://{(balancerIp || (typeof window !== 'undefined' ? window.location.hostname : 'localhost')).split(':')[0]}:{proxy.port}
                                         </div>
                                       </div>
                                     </div>
@@ -561,20 +586,46 @@ export default function Dashboard() {
                                     {/* Errors/Locks inline if present */}
                                     {(isLocked || isError) && (
                                       <div className="pt-1 flex gap-2">
-                                        {isLocked && <Badge variant="outline" className="text-orange-600 bg-orange-50 border-orange-200 h-5 px-1.5 gap-1"><Lock className="w-3 h-3" /> SIM Locked</Badge>}
+                                        {isLocked && (
+                                          <Badge
+                                            variant="outline"
+                                            className="text-orange-600 bg-orange-50 border-orange-200 h-5 px-1.5 gap-1 cursor-pointer hover:bg-orange-100"
+                                            onClick={() => modem && setUnlockSim({ workerId: worker.id, modemId: modem.id })}
+                                          >
+                                            <Lock className="w-3 h-3" /> Unlock SIM
+                                          </Badge>
+                                        )}
                                         {isError && <Badge variant="destructive" className="h-5 px-1.5 gap-1"><AlertTriangle className="w-3 h-3" /> Error</Badge>}
                                       </div>
                                     )}
 
                                   </div>
 
-                                  <div className="grid grid-cols-3 gap-2">
+
+
+                                  <div className="grid grid-cols-4 gap-2">
                                     <CopyProxyButton
                                       proxy={proxy}
                                       balancerIp={balancerIp}
                                       workerIp={worker.ip}
                                       modem={modem}
                                     />
+
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          className="w-full h-8 text-xs font-medium border-gray-200 dark:border-zinc-700 hover:bg-white dark:hover:bg-zinc-800 transition-colors text-blue-600 dark:text-blue-400 hover:text-blue-700"
+                                          onClick={() => setTestProxy(proxy)}
+                                        >
+                                          <Activity className="w-3 h-3" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Test Proxy</p>
+                                      </TooltipContent>
+                                    </Tooltip>
 
                                     <Tooltip>
                                       <TooltipTrigger asChild>
@@ -593,6 +644,8 @@ export default function Dashboard() {
                                       </TooltipContent>
                                     </Tooltip>
 
+                                    {/* Start/Stop Button */}
+                                    {/* ... existing start/stop button ... */}
                                     <Tooltip>
                                       <TooltipTrigger asChild>
                                         <Button
@@ -603,15 +656,9 @@ export default function Dashboard() {
                                           disabled={!modem}
                                         >
                                           {!isProxyRunning ? (
-                                            <>
-                                              <Play className="w-3 h-3 mr-1.5" />
-                                              Start
-                                            </>
+                                            <Play className="w-3 h-3" />
                                           ) : (
-                                            <>
-                                              <Square className="w-3 h-3 mr-1.5" />
-                                              Stop
-                                            </>
+                                            <Square className="w-3 h-3" />
                                           )}
                                         </Button>
                                       </TooltipTrigger>
@@ -625,14 +672,14 @@ export default function Dashboard() {
                             });
                             return proxyCards;
                           })()}
-                        </div>
-                      </div>
-                    </Card>
-                  </motion.div>
+                        </div >
+                      </div >
+                    </Card >
+                  </motion.div >
                 ))
               )}
-            </AnimatePresence>
-          </motion.div>
+            </AnimatePresence >
+          </motion.div >
 
           <ProxyLogsDialog
             open={!!selectedProxy}
