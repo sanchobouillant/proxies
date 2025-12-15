@@ -329,11 +329,10 @@ program_pair() {
     if ! wds_log=$(qmicli -d "$dev" --device-open-proxy --wds-start-network="apn='${APN}',ip-type=4" --client-no-release-cid 2>&1); then
       perlog "$tag" "qmi start (wds) FAILED: $wds_log"
       
-      # Diagnostic SIM/PIN
+      # Diagnostic SIM/PIN (Unconditional)
       local pin_status
-      if pin_status=$(qmicli -d "$dev" --device-open-proxy --dms-uim-get-pin-status 2>&1); then
-         perlog "$tag" "[DIAGNOSTIC SIM] $pin_status"
-      fi
+      pin_status=$(qmicli -d "$dev" --device-open-proxy --dms-uim-get-pin-status 2>&1 || true)
+      perlog "$tag" "[DIAGNOSTIC SIM] $pin_status"
       
       sleep 3
       continue
@@ -418,8 +417,8 @@ program_pair() {
         fi
       else
         perlog "$tag" "Restart QMI Failed: $restart_log"
-        # Diagnostic SIM/PIN
-        qmicli -d "$dev" --device-open-proxy --dms-uim-get-pin-status 2>&1 | grep -i "status:" | while read -r line; do
+        # Diagnostic SIM/PIN (Unconditional pipe)
+        qmicli -d "$dev" --device-open-proxy --dms-uim-get-pin-status 2>&1 | while read -r line; do
            perlog "$tag" "[DIAGNOSTIC SIM] $line"
         done || true
       fi
