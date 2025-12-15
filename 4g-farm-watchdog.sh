@@ -59,6 +59,17 @@ ensure_prereqs() {
   sysctl -w net.ipv4.ip_forward=1 >/dev/null || true
   log "IP forward activé"
 
+  # Autorise le trafic FORWARD pour les LXC (10.10.x.x)
+  # Ces règles sont globales et nécessaires pour que les paquets traversent le Pi
+  if ! iptables -C FORWARD -s 10.10.0.0/16 -j ACCEPT 2>/dev/null; then
+     iptables -I FORWARD 1 -s 10.10.0.0/16 -j ACCEPT
+     log "iptables: FORWARD src 10.10.0.0/16 activé"
+  fi
+  if ! iptables -C FORWARD -d 10.10.0.0/16 -j ACCEPT 2>/dev/null; then
+     iptables -I FORWARD 1 -d 10.10.0.0/16 -j ACCEPT
+     log "iptables: FORWARD dst 10.10.0.0/16 activé"
+  fi
+
   # qmi-network config commune
   # FIX: qmi-proxy=yes cause une erreur de syntaxe quand sourcé par le shell.
   # On le retire. Si besoin de proxy, qmi-network devrait le gérer autrement ou on espère que le device-open-proxy ailleurs suffit.
